@@ -28,6 +28,9 @@ inventory/group_vars/magicbox/vault.yml
 # Artifacts fetched from MagicBox (e.g. the local CA certificate)
 artifacts/
 
+# Scratch notes and drafts (not part of the project)
+.tmp/
+
 # Local assistant / tooling state (shared config stays tracked)
 .claude/settings.local.json
 .claude/.headroom_wrap_marker.json
