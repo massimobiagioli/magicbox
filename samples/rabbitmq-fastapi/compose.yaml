@@ -1,0 +1,11 @@
+---
+services:
+  app:
+    build: .
+    image: rabbitmq-fastapi:local
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL:?set RABBITMQ_URL, see .env.example}
+      RABBITMQ_QUEUE: ${RABBITMQ_QUEUE:-magicbox.samples}
+    ports:
+      - "8000:8000"
+    restart: unless-stopped

@@ -1,0 +1,14 @@
+---
+services:
+  app:
+    build: .
+    image: observability-fastapi:local
+    # On MagicBox, Docker tags every log line with the container name and Alloy
+    # turns it into the Loki label `container`: keep this name stable, it is
+    # what you query in Grafana ({container="observability-fastapi"}).
+    container_name: observability-fastapi
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    restart: unless-stopped

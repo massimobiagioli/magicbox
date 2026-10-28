@@ -23,6 +23,7 @@ inventory/group_vars/magicbox/vault.yml
 *.p12
 .env
 .env.*
+!.env.example
 
 # Artifacts fetched from MagicBox (e.g. the local CA certificate)
 artifacts/
