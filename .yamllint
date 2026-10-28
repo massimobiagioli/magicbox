@@ -4,6 +4,7 @@ ignore: |
   .venv/
   .ansible/
   .serena/
+  inventory/group_vars/magicbox/vault.yml
 rules:
   line-length:
     max: 140

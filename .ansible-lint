@@ -7,5 +7,7 @@ exclude_paths:
   - .claude/
   - artifacts/
   - tests/container/
+  - inventory/hosts.yml
+  - inventory/group_vars/magicbox/vault.yml
 mock_roles: []
 offline: true

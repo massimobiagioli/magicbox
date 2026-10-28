@@ -14,6 +14,10 @@ all:
           ansible_user: CHANGE_ME
           # Dedicated SSH key created in the installation guide (1.6).
           ansible_ssh_private_key_file: ~/.ssh/magicbox/id_ed25519
+          # Connect over IPv4: the firewall allows SSH only from magicbox_lan_cidr
+          # (IPv4), and macOS may still resolve magicbox.local to an IPv6
+          # link-local address.
+          ansible_ssh_extra_args: "-4"
           # sudo password, read from the vault (vault_become_password).
           # Remove this line if ansible_user has passwordless sudo.
           ansible_become_password: "{{ vault_become_password }}"

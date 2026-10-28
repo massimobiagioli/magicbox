@@ -88,6 +88,7 @@ Defined in `inventory/hosts.yml` (environment facts) or
 |----------|---------|-------------|
 | `magicbox_lan_interface` | required | LAN interface on MagicBox (`ip -br link`). Avahi publishes only here. |
 | `magicbox_lan_cidr` | required | Private IPv4 LAN subnet allowed to reach SSH, Portainer and mDNS. |
+| `ansible_ssh_extra_args` | `"-4"` | SSH over IPv4: ufw allows only the IPv4 `magicbox_lan_cidr`; an IPv6 link-local connection is refused by preflight. |
 | `ansible_become_password` | `{{ vault_become_password }}` | sudo password of `ansible_user`, set in `inventory/hosts.yml`; remove with passwordless sudo. |
 | `vault_become_password` | required (vault) | sudo password; anyone with the vault password can become root on MagicBox. |
 | `ansible_become_exe` | `sudo` | Ubuntu 26.04: `sudo.ws` (classic sudo; sudo-rs prompts time out, ADR-0002). |

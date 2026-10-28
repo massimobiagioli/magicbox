@@ -80,7 +80,7 @@ magicbox$ avahi-resolve-host-name -4 magicbox.local
 controller$ mkdir -m 700 -p ~/.ssh/magicbox
 controller$ ssh-keygen -t ed25519 -f ~/.ssh/magicbox/id_ed25519 -C magicbox
 controller$ ssh-copy-id -i ~/.ssh/magicbox/id_ed25519.pub <admin-user>@magicbox.local
-controller$ ssh -i ~/.ssh/magicbox/id_ed25519 <admin-user>@magicbox.local 'sudo -v && echo sudo-ok'
+controller$ ssh -4 -i ~/.ssh/magicbox/id_ed25519 <admin-user>@magicbox.local 'sudo -v && echo sudo-ok'
 ```
 
 - [ ] Dedicated key for MagicBox: private `~/.ssh/magicbox/id_ed25519` (never
@@ -100,6 +100,7 @@ magicbox$ sudo sshd -t && sudo systemctl reload ssh
 | `ansible_host` | always `magicbox.local` | magicbox.local |
 | `ansible_user` | admin user | ______________ |
 | `ansible_ssh_private_key_file` | key from 1.6 | ~/.ssh/magicbox/id_ed25519 |
+| `ansible_ssh_extra_args` | keep (IPv4 only) | "-4" |
 | `ansible_become_exe` | Ubuntu 26.04 only | sudo.ws |
 | `magicbox_lan_interface` | `ip -br link` | ______________ |
 | `magicbox_lan_cidr` | LAN subnet, e.g. 192.168.1.0/24 | ______________ |
@@ -228,6 +229,7 @@ renewed automatically by any playbook run within 30 days of expiry.
 
 | Symptom | Fix |
 |---------|-----|
+| "SSH connection originates outside" | Controller uses IPv6: keep `ansible_ssh_extra_args: "-4"`; `ssh -4` by hand |
 | "Timeout waiting privilege escalation prompt" | Ubuntu 26.04 (sudo-rs): set `ansible_become_exe: sudo.ws` |
 | "Unsupported OS" | Install Ubuntu Server 24.04 LTS |
 | `magicbox_lan_interface` assertion | Use a name listed in the error |

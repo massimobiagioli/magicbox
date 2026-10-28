@@ -38,6 +38,8 @@
     fail_msg: >-
       Define vault_portainer_admin_password (>= 12 characters) in
       inventory/group_vars/magicbox/vault.yml (see inventory/vault.example.yml).
+      Found: {{ (portainer_admin_password | string | length) ~ ' characters'
+      if portainer_admin_password is defined else 'not defined' }}.
     quiet: true
   no_log: true
 
