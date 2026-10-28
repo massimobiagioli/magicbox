@@ -1,0 +1,62 @@
+---
+- name: Install Avahi and the mDNS NSS module
+  ansible.builtin.apt:
+    name: "{{ mdns_packages }}"
+    state: present
+
+- name: Check whether systemd-resolved is installed
+  ansible.builtin.stat:
+    path: /lib/systemd/system/systemd-resolved.service
+  register: mdns_resolved_unit
+
+- name: Disable the systemd-resolved mDNS/LLMNR responders (Avahi owns UDP 5353)
+  when: mdns_resolved_unit.stat.exists
+  block:
+    - name: Create the systemd-resolved drop-in directory
+      ansible.builtin.file:
+        path: /etc/systemd/resolved.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Write the systemd-resolved drop-in
+      ansible.builtin.copy:
+        dest: /etc/systemd/resolved.conf.d/magicbox-mdns.conf
+        content: |
+          # Managed by Ansible (role: mdns). Avahi is the only mDNS responder.
+          [Resolve]
+          MulticastDNS=no
+          LLMNR=no
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart systemd-resolved
+
+- name: Configure Avahi
+  ansible.builtin.template:
+    src: avahi-daemon.conf.j2
+    dest: /etc/avahi/avahi-daemon.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart avahi-daemon
+
+- name: Enable and start Avahi
+  ansible.builtin.systemd_service:
+    name: avahi-daemon.service
+    enabled: true
+    state: started
+
+- name: Apply pending mDNS configuration before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify MagicBox resolves its own mDNS name
+  ansible.builtin.command:
+    argv: [avahi-resolve-host-name, -4, "{{ magicbox_hostname }}.local"]
+  register: mdns_self_resolve
+  changed_when: false
+  retries: 5
+  delay: 2
+  until: mdns_self_resolve.rc == 0 and mdns_self_resolve.stdout | length > 0
+  tags: [verify]

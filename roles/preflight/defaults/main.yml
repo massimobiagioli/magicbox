@@ -1,0 +1,17 @@
+---
+# Packages required on MagicBox by later roles and by Ansible modules
+# (community.docker needs python3-requests, community.crypto needs
+# python3-cryptography, deb822_repository needs python3-debian, the docker
+# role verifies the apt key with gpg).
+preflight_base_packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - iproute2
+  - python3-cryptography
+  - python3-debian
+  - python3-requests
+
+# Set the OS hostname to magicbox_hostname. Disabled only in the test
+# container, where Docker bind-mounts /etc/hostname and /etc/hosts.
+preflight_manage_hostname: true

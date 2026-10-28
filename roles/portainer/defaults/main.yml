@@ -1,0 +1,39 @@
+---
+# Portainer CE release. 2.45.3 is the current LTS tag on Docker Hub; bump
+# deliberately and read the release notes before upgrading.
+portainer_image: portainer/portainer-ce
+portainer_version: "2.45.3"
+portainer_container_name: portainer
+portainer_https_port: 9443
+
+# Named Docker volume holding Portainer's database (users, endpoints, stacks).
+portainer_data_volume: portainer_data
+
+# Host paths for TLS material and the bootstrap admin password.
+portainer_base_dir: /opt/magicbox/portainer
+portainer_cert_dir: "{{ portainer_base_dir }}/certs"
+portainer_secret_dir: "{{ portainer_base_dir }}/secrets"
+
+# TLS mode:
+#   local_ca - MagicBox generates a private CA (name-constrained to the
+#              MagicBox names) and a server certificate signed by it.
+#   provided - copy an existing certificate/key from the controller.
+portainer_tls_mode: local_ca
+portainer_tls_dns_names:
+  - "{{ magicbox_hostname }}.local"
+  - "{{ magicbox_hostname }}"
+# Optional extra IP SANs (e.g. the DHCP-reserved address). Empty by default.
+portainer_tls_ip_addresses: []
+portainer_tls_ca_common_name: "MagicBox Local CA ({{ magicbox_hostname }})"
+portainer_tls_ca_valid_for: +3650d
+portainer_tls_cert_valid_for: +397d
+# Re-issue the server certificate when it expires within this window.
+portainer_tls_renew_before: +30d
+
+# Controller-side location of the CA certificate fetched for LAN clients.
+portainer_tls_ca_fetch_dest: "{{ playbook_dir }}/../artifacts/magicbox-local-ca.crt"
+
+# Only for portainer_tls_mode=provided (controller paths; keep keys vaulted).
+portainer_tls_provided_cert_src: ""
+portainer_tls_provided_key_src: ""
+portainer_tls_provided_ca_src: ""

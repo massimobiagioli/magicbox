@@ -1,0 +1,25 @@
+---
+- name: Assert provided TLS source paths are set
+  ansible.builtin.assert:
+    that:
+      - portainer_tls_provided_cert_src | length > 0
+      - portainer_tls_provided_key_src | length > 0
+      - portainer_tls_provided_ca_src | length > 0
+    fail_msg: Set portainer_tls_provided_{cert,key,ca}_src for portainer_tls_mode=provided.
+    quiet: true
+
+- name: Install the provided TLS files
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ portainer_cert_dir }}/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { src: "{{ portainer_tls_provided_cert_src }}", dest: portainer.crt, mode: "0644" }
+    - { src: "{{ portainer_tls_provided_key_src }}", dest: portainer.key, mode: "0600" }
+    - { src: "{{ portainer_tls_provided_ca_src }}", dest: ca.crt, mode: "0644" }
+  loop_control:
+    label: "{{ item.dest }}"
+  no_log: "{{ item.dest == 'portainer.key' }}"
+  notify: Restart portainer

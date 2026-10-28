@@ -1,0 +1,9 @@
+---
+- name: Restart portainer
+  community.docker.docker_container:
+    name: "{{ portainer_container_name }}"
+    state: started
+    restart: true
+    image: "{{ portainer_image }}:{{ portainer_version }}"
+    comparisons:
+      '*': ignore

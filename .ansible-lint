@@ -1,0 +1,11 @@
+---
+profile: production
+exclude_paths:
+  - .venv/
+  - .ansible/
+  - .serena/
+  - .claude/
+  - artifacts/
+  - tests/container/
+mock_roles: []
+offline: true

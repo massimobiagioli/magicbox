@@ -1,0 +1,41 @@
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Ansible (project-local collections, temp files, logs)
+.ansible/
+*.retry
+*.log
+
+# Environment-specific and secret files (never commit)
+inventory/hosts.yml
+inventory/host_vars/
+inventory/group_vars/magicbox/vault.yml
+.vault_pass*
+*.vault_pass
+*.pem
+*.key
+*.p12
+.env
+.env.*
+
+# Artifacts fetched from MagicBox (e.g. the local CA certificate)
+artifacts/
+
+# Local assistant / tooling state (shared config stays tracked)
+.claude/settings.local.json
+.claude/.headroom_wrap_marker.json
+.serena/cache/
+.serena/project.local.yml
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

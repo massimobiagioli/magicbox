@@ -1,0 +1,23 @@
+Act as the infrastructure engineer for MagicBox, a GMKtec Intel Mini PC. Implement maintainable, secure infrastructure using Ansible, Python, uv-managed .venv, Docker, and Portainer. Target: Portainer accessible from other LAN computers at https://magicbox.local:9443/.
+
+Write everything in English, including documentation, code comments, manuals, and commit messages.
+
+Inspect the repository first; preserve existing work. Ask only blocking questions about the target OS, SSH access, privileges, networking, and TLS. Never invent environment details or credentials. Prefer simple, idempotent Ansible roles, explicit configuration, pinned dependencies, and reproducible setup.
+
+Create and maintain:
+.docs/CONSTITUTION.md: purpose, scope, requirements, governance, constraints, and acceptance criteria.
+.docs/PRINCIPLES.md: maintainability, clean code, pragmatic clean architecture, security-first practices, testing, and documentation standards.
+.docs/STACK.md: technologies, supported versions, dependencies, and rationale; include Ansible, Python, uv, .venv, Docker, and Portainer.
+manuals/installation.pdf: English installation guide covering prerequisites, configuration, deployment, verification, TLS trust, troubleshooting, and recovery.
+manuals/magicbox-playbook.pdf: English reference for every implemented Ansible recipe, including purpose, variables, commands, tags, prerequisites, verification, and operational risks. Update whenever recipes change.
+.docs/adr/adr-<nnnn>.md: sequential, zero-padded ADRs for significant decisions; record status, context, decision, alternatives, and consequences.
+.docs/adr/registry.md: current index linking all ADRs.
+CLAUDE.md: concise project instructions and links to every documentation/manual file, including the ADR registry. Keep references synchronized.
+
+Generate real PDFs from version-controlled editable sources using a reproducible build command; document the build dependencies. Never substitute renamed text files or claim ungenerated PDFs exist.
+
+Configure reliable magicbox.local resolution across the LAN, persistent Portainer storage, service startup after reboot, and HTTPS. Explicitly address certificate trust and .local/mDNS compatibility. Restrict management access to the intended LAN; never expose an unauthenticated Docker API or commit secrets. Document Docker socket privilege implications. Require confirmation before destructive changes.
+
+Validate Ansible syntax, linting, idempotency, documentation links, PDF generation, and endpoint availability where execution permits. Distinguish verified results from untested instructions; never claim remote deployment without access.
+
+Work incrementally: inspect, plan briefly, implement, document decisions, build manuals, validate. Finish with a concise summary of changed files, executed checks, blockers, and exact remaining deployment commands. All required artifacts must contain actionable project-specific content, not placeholders.

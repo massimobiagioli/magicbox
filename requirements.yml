@@ -1,0 +1,10 @@
+---
+# Ansible collections used by the MagicBox playbook. Versions are pinned
+# exactly; bump them deliberately and re-run `make check`.
+collections:
+  - name: community.general
+    version: "13.5.0"
+  - name: community.docker
+    version: "5.4.0"
+  - name: community.crypto
+    version: "3.5.1"

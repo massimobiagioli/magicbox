@@ -1,0 +1,75 @@
+---
+- name: Install ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+- name: Read the current ufw status
+  ansible.builtin.command:
+    argv: [ufw, status]
+  register: firewall_status
+  changed_when: false
+
+- name: Refuse first-time firewall activation without explicit confirmation
+  ansible.builtin.assert:
+    that:
+      - magicbox_confirm_destructive | bool
+    fail_msg: >-
+      ufw is inactive. Enabling it drops every inbound connection not coming from
+      {{ magicbox_lan_cidr }} (controller location: {{ preflight_controller_location }}).
+      Confirm SSH access from that subnet, then re-run with -e magicbox_confirm_destructive=true.
+    quiet: true
+  when: "'Status: active' not in firewall_status.stdout"
+
+- name: Refuse to enable the firewall when the controller is outside the LAN
+  ansible.builtin.assert:
+    that:
+      - preflight_controller_location != 'outside'
+    fail_msg: >-
+      The SSH connection originates outside {{ magicbox_lan_cidr }}; enabling ufw would
+      lock this controller out. Fix magicbox_lan_cidr or run from inside the LAN.
+    quiet: true
+
+- name: Allow SSH from the LAN
+  community.general.ufw:
+    rule: allow
+    proto: tcp
+    from_ip: "{{ magicbox_lan_cidr }}"
+    to_port: "{{ firewall_ssh_port | string }}"
+    comment: magicbox-ssh
+
+- name: Allow LAN TCP services
+  community.general.ufw:
+    rule: allow
+    proto: tcp
+    from_ip: "{{ magicbox_lan_cidr }}"
+    to_port: "{{ item | string }}"
+    comment: "magicbox-tcp-{{ item }}"
+  loop: "{{ firewall_lan_tcp_ports }}"
+
+- name: Allow LAN UDP services
+  community.general.ufw:
+    rule: allow
+    proto: udp
+    from_ip: "{{ magicbox_lan_cidr }}"
+    to_port: "{{ item | string }}"
+    comment: "magicbox-udp-{{ item }}"
+  loop: "{{ firewall_lan_udp_ports }}"
+
+- name: Deny all other inbound traffic by default
+  community.general.ufw:
+    direction: incoming
+    default: deny
+
+- name: Allow outbound traffic by default
+  community.general.ufw:
+    direction: outgoing
+    default: allow
+
+- name: Set firewall logging level
+  community.general.ufw:
+    logging: "{{ firewall_logging }}"
+
+- name: Enable ufw (persists across reboots)
+  community.general.ufw:
+    state: enabled

@@ -1,0 +1,95 @@
+---
+- name: Generate the local CA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ portainer_cert_dir }}/ca.key"
+    type: ECC
+    curve: secp384r1
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Check for an existing local CA certificate
+  ansible.builtin.stat:
+    path: "{{ portainer_cert_dir }}/ca.crt"
+  register: portainer_ca_cert_stat
+
+- name: Create the local CA signing request
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ portainer_cert_dir }}/ca.key"
+    common_name: "{{ portainer_tls_ca_common_name }}"
+    basic_constraints: ["CA:TRUE", "pathlen:0"]
+    basic_constraints_critical: true
+    key_usage: [keyCertSign, cRLSign]
+    key_usage_critical: true
+    # A leaked CA key can only impersonate MagicBox names, never other sites.
+    name_constraints_permitted: "{{ portainer_tls_dns_names | map('regex_replace', '^', 'DNS:') | list
+      + portainer_tls_ip_addresses | map('regex_replace', '^(.*)$', 'IP:\\1/32') | list }}"
+    name_constraints_critical: true
+  register: portainer_ca_csr
+  when: not portainer_ca_cert_stat.stat.exists
+
+- name: Self-sign the local CA certificate
+  community.crypto.x509_certificate:
+    path: "{{ portainer_cert_dir }}/ca.crt"
+    csr_content: "{{ portainer_ca_csr.csr }}"
+    privatekey_path: "{{ portainer_cert_dir }}/ca.key"
+    provider: selfsigned
+    selfsigned_not_after: "{{ portainer_tls_ca_valid_for }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: not portainer_ca_cert_stat.stat.exists
+  notify: Restart portainer
+
+- name: Generate the Portainer server private key
+  community.crypto.openssl_privatekey:
+    path: "{{ portainer_cert_dir }}/portainer.key"
+    type: ECC
+    curve: secp256r1
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart portainer
+
+- name: Create the Portainer server signing request
+  community.crypto.openssl_csr:
+    path: "{{ portainer_cert_dir }}/portainer.csr"
+    privatekey_path: "{{ portainer_cert_dir }}/portainer.key"
+    common_name: "{{ portainer_tls_dns_names[0] }}"
+    subject_alt_name: "{{ portainer_tls_dns_names | map('regex_replace', '^', 'DNS:') | list
+      + portainer_tls_ip_addresses | map('regex_replace', '^', 'IP:') | list }}"
+    basic_constraints: ["CA:FALSE"]
+    key_usage: [digitalSignature]
+    key_usage_critical: true
+    extended_key_usage: [serverAuth]
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Check whether the server certificate needs renewal
+  community.crypto.x509_certificate_info:
+    path: "{{ portainer_cert_dir }}/portainer.crt"
+    valid_at:
+      renew: "{{ portainer_tls_renew_before }}"
+  register: portainer_cert_info
+  failed_when: false
+
+- name: Issue the Portainer server certificate from the local CA
+  community.crypto.x509_certificate:
+    path: "{{ portainer_cert_dir }}/portainer.crt"
+    csr_path: "{{ portainer_cert_dir }}/portainer.csr"
+    provider: ownca
+    ownca_path: "{{ portainer_cert_dir }}/ca.crt"
+    ownca_privatekey_path: "{{ portainer_cert_dir }}/ca.key"
+    ownca_not_after: "{{ portainer_tls_cert_valid_for }}"
+    force: "{{ not (portainer_cert_info.valid_at.renew | default(false)) }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart portainer
+
+- name: Fetch the local CA certificate for LAN clients
+  ansible.builtin.fetch:
+    src: "{{ portainer_cert_dir }}/ca.crt"
+    dest: "{{ portainer_tls_ca_fetch_dest }}"
+    flat: true

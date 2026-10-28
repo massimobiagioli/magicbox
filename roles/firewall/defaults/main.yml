@@ -1,0 +1,13 @@
+---
+# SSH port allowed from the LAN. Change only if sshd listens elsewhere.
+firewall_ssh_port: 22
+
+# TCP ports allowed from magicbox_lan_cidr in addition to SSH.
+firewall_lan_tcp_ports:
+  - 9443  # Portainer HTTPS UI/API
+
+# UDP ports allowed from magicbox_lan_cidr.
+firewall_lan_udp_ports:
+  - 5353  # mDNS (Avahi)
+
+firewall_logging: low

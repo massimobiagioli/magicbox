@@ -1,0 +1,21 @@
+---
+# Copy to inventory/hosts.yml (git-ignored) and replace every value marked
+# REQUIRED with facts from your environment. Do not commit the real file.
+all:
+  children:
+    magicbox:
+      hosts:
+        magicbox-node:
+          # REQUIRED: address used by Ansible to reach MagicBox over SSH.
+          # Prefer the DHCP-reserved IPv4 address; magicbox.local only works
+          # after the mdns role has run once.
+          ansible_host: 192.0.2.10
+          # REQUIRED: the sudo-capable admin account created during OS install.
+          ansible_user: CHANGE_ME
+          # Optional: private key used for SSH (key-based auth is required).
+          # ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+      vars:
+        # REQUIRED: the LAN interface name on MagicBox (`ip -br link`).
+        magicbox_lan_interface: CHANGE_ME
+        # REQUIRED: the LAN subnet allowed to reach SSH and Portainer.
+        magicbox_lan_cidr: 192.0.2.0/24

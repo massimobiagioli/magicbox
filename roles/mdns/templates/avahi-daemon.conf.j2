@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+# Publishes {{ magicbox_hostname }}.local on {{ magicbox_lan_interface }} only.
+[server]
+host-name={{ magicbox_hostname }}
+domain-name=local
+use-ipv4=yes
+use-ipv6={{ mdns_use_ipv6 | ternary('yes', 'no') }}
+allow-interfaces={{ magicbox_lan_interface }}
+ratelimit-interval-usec=1000000
+ratelimit-burst=1000
+
+[wide-area]
+enable-wide-area=no
+
+[publish]
+publish-addresses=yes
+# Do not advertise OS/hardware details or a workstation service.
+publish-hinfo=no
+publish-workstation=no
+
+[reflector]
+enable-reflector=no
+
+[rlimits]

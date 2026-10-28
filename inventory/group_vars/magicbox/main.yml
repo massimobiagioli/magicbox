@@ -1,0 +1,21 @@
+---
+# Project-wide settings for MagicBox. Environment-specific values
+# (address, SSH user, LAN interface, LAN CIDR) live in inventory/hosts.yml.
+
+# Hostname published over mDNS as <magicbox_hostname>.local.
+magicbox_hostname: magicbox
+
+# Hardware/OS guard rails checked by the preflight role.
+magicbox_expected_architecture: x86_64
+magicbox_supported_os:
+  Ubuntu: ["24.04", "26.04"]
+  Debian: ["12", "13"]
+
+# Destructive operations (removing conflicting container packages, first
+# activation of the host firewall) are refused unless this is true.
+# Pass it per run: -e magicbox_confirm_destructive=true
+magicbox_confirm_destructive: false
+
+# Secrets come from inventory/group_vars/magicbox/vault.yml (git-ignored,
+# ansible-vault encrypted). See inventory/vault.example.yml.
+portainer_admin_password: "{{ vault_portainer_admin_password }}"

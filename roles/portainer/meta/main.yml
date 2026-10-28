@@ -1,0 +1,13 @@
+---
+galaxy_info:
+  role_name: portainer
+  author: MagicBox maintainers
+  description: MagicBox portainer role
+  license: MIT
+  min_ansible_version: "2.21"
+  platforms:
+    - name: Ubuntu
+      versions: [noble]
+    - name: Debian
+      versions: [bookworm, trixie]
+dependencies: []

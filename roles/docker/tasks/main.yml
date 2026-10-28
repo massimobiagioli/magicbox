@@ -1,0 +1,128 @@
+---
+- name: Gather installed package facts
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: Determine conflicting packages that are installed
+  ansible.builtin.set_fact:
+    docker_conflicts_present: "{{ docker_conflicting_packages | select('in', ansible_facts['packages']) | list }}"
+
+- name: Refuse to remove conflicting packages without confirmation
+  ansible.builtin.assert:
+    that:
+      - docker_conflicts_present | length == 0 or magicbox_confirm_destructive | bool
+    fail_msg: >-
+      Installed packages conflict with Docker CE: {{ docker_conflicts_present | join(', ') }}.
+      Removing them stops existing containers that depend on them. Re-run with
+      -e magicbox_confirm_destructive=true to remove them.
+    quiet: true
+
+- name: Remove conflicting packages
+  ansible.builtin.apt:
+    name: "{{ docker_conflicts_present }}"
+    state: absent
+  when: docker_conflicts_present | length > 0
+
+- name: Create the apt keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download the Docker apt signing key
+  ansible.builtin.get_url:
+    url: "{{ docker_apt_key_url }}"
+    dest: "{{ docker_apt_key_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Read the Docker apt key fingerprint
+  ansible.builtin.command:
+    argv: [gpg, --show-keys, --with-colons, "{{ docker_apt_key_path }}"]
+  register: docker_key_info
+  changed_when: false
+
+- name: Assert the Docker apt key fingerprint matches the pinned value
+  ansible.builtin.assert:
+    that:
+      - ("fpr:::::::::" ~ docker_apt_key_fingerprint ~ ":") in docker_key_info.stdout_lines
+    fail_msg: "Unexpected Docker apt key at {{ docker_apt_key_path }}; refusing to trust it."
+    quiet: true
+
+- name: Configure the Docker apt repository
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: [deb]
+    uris: "https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}"
+    suites: ["{{ ansible_facts['distribution_release'] }}"]
+    components: [stable]
+    architectures: ["{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}"]
+    signed_by: "{{ docker_apt_key_path }}"
+    state: present
+  register: docker_repo
+
+- name: Pin Docker Engine to the supported major version
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/docker-ce.pref
+    content: |
+      # Managed by Ansible (role: docker).
+      Package: docker-ce docker-ce-cli docker-ce-rootless-extras
+      Pin: version 5:{{ docker_major_version }}.*
+      Pin-Priority: 1001
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install Docker Engine
+  ansible.builtin.apt:
+    name: "{{ docker_packages }}"
+    state: present
+    update_cache: "{{ docker_repo is changed }}"
+
+- name: Create the Docker configuration directory
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure the Docker daemon
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+    validate: dockerd --validate --config-file=%s
+  notify: Restart docker
+
+- name: Enable and start containerd and Docker at boot
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - containerd.service
+    - docker.service
+
+- name: Apply pending Docker configuration before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: List TCP listeners owned by dockerd
+  ansible.builtin.command:
+    argv: [ss, -Hltnp]
+  register: docker_tcp_listeners
+  changed_when: false
+  tags: [verify]
+
+- name: Assert the Docker API is not exposed over TCP
+  ansible.builtin.assert:
+    that:
+      - docker_tcp_listeners.stdout_lines | select('search', '"dockerd"') | list | length == 0
+    fail_msg: "dockerd listens on TCP; only the root-owned Unix socket is allowed."
+    quiet: true
+  tags: [verify]

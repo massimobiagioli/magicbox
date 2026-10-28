@@ -1,0 +1,91 @@
+---
+- name: Assert the operating system is supported
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] in magicbox_supported_os
+      - ansible_facts['distribution_version'] in magicbox_supported_os[ansible_facts['distribution']]
+    fail_msg: >-
+      Unsupported OS {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}.
+      Supported: {{ magicbox_supported_os | to_json }}.
+    quiet: true
+
+- name: Assert the CPU architecture matches the MagicBox hardware
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['architecture'] == magicbox_expected_architecture
+    fail_msg: >-
+      Expected {{ magicbox_expected_architecture }}, found {{ ansible_facts['architecture'] }}.
+    quiet: true
+
+- name: Assert required inventory values are set
+  ansible.builtin.assert:
+    that:
+      - magicbox_lan_interface is defined
+      - magicbox_lan_interface != 'CHANGE_ME'
+      - magicbox_lan_interface in ansible_facts['interfaces']
+      - magicbox_lan_cidr is defined
+      - magicbox_hostname is match('^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$')
+    fail_msg: >-
+      Set magicbox_lan_interface (one of {{ ansible_facts['interfaces'] | join(', ') }})
+      and magicbox_lan_cidr in inventory/hosts.yml; magicbox_hostname must be a single DNS label.
+    quiet: true
+
+- name: Assert the Portainer admin password is provided via Ansible Vault
+  ansible.builtin.assert:
+    that:
+      - portainer_admin_password is defined
+      - portainer_admin_password | length >= 12
+    fail_msg: >-
+      Define vault_portainer_admin_password (>= 12 characters) in
+      inventory/group_vars/magicbox/vault.yml (see inventory/vault.example.yml).
+    quiet: true
+  no_log: true
+
+- name: Validate the LAN CIDR and locate the SSH controller relative to it
+  # Runs without become so SSH_CLIENT (stripped by sudo) is still visible.
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import ipaddress, os, sys
+        net = ipaddress.ip_network(sys.argv[1], strict=False)
+        if not net.is_private:
+            sys.exit("magicbox_lan_cidr must be a private network")
+        client = os.environ.get("SSH_CLIENT", "").split()
+        if not client:
+            print("unknown")
+        else:
+            print("inside" if ipaddress.ip_address(client[0]) in net else "outside")
+      - "{{ magicbox_lan_cidr }}"
+  become: false
+  changed_when: false
+  register: preflight_lan_check
+
+- name: Record where the controller connects from (inside, outside or unknown)
+  ansible.builtin.set_fact:
+    preflight_controller_location: "{{ preflight_lan_check.stdout | trim }}"
+
+- name: Set the hostname
+  when: preflight_manage_hostname | bool
+  block:
+    - name: Set the static hostname
+      ansible.builtin.hostname:
+        name: "{{ magicbox_hostname }}"
+        use: systemd
+
+    - name: Map the hostname to the loopback address
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '^127\.0\.1\.1\s'
+        line: "127.0.1.1 {{ magicbox_hostname }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ preflight_base_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600

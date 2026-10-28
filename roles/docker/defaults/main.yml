@@ -1,0 +1,31 @@
+---
+# Docker Engine major version pinned through apt preferences. Patch releases
+# within this major are allowed; a major upgrade is a deliberate change.
+docker_major_version: "29"
+
+# Official Docker apt repository signing key and its expected fingerprint.
+docker_apt_key_url: "https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}/gpg"
+docker_apt_key_fingerprint: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+docker_apt_key_path: /etc/apt/keyrings/docker.asc
+
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+
+# Distribution packages that conflict with Docker CE. They are removed only
+# with -e magicbox_confirm_destructive=true.
+docker_conflicting_packages:
+  - docker.io
+  - docker-doc
+  - docker-compose
+  - docker-compose-v2
+  - podman-docker
+  - containerd
+  - runc
+
+# Container log rotation (json-file driver).
+docker_log_max_size: 10m
+docker_log_max_file: 3

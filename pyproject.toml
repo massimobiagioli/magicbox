@@ -1,0 +1,25 @@
+[project]
+name = "magicbox-infra"
+version = "0.1.0"
+description = "Ansible-managed infrastructure for MagicBox (GMKtec Intel Mini PC): Docker and Portainer on the LAN."
+readme = "CLAUDE.md"
+requires-python = ">=3.12,<3.15"
+# Runtime controller dependencies. Exact pins keep runs reproducible;
+# uv.lock pins the full transitive tree.
+dependencies = [
+    "ansible-core==2.21.5",
+]
+
+[dependency-groups]
+dev = [
+    "ansible-lint==26.10.1",
+    "yamllint==1.38.0",
+]
+docs = [
+    "fpdf2==2.8.9",
+    "markdown==3.11.2",
+]
+
+[tool.uv]
+default-groups = ["dev", "docs"]
+package = false

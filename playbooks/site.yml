@@ -1,0 +1,39 @@
+---
+# MagicBox: Docker + Portainer reachable at https://magicbox.local:9443/ from the LAN.
+# Run: uv run ansible-playbook playbooks/site.yml --ask-vault-pass
+- name: Configure MagicBox
+  hosts: magicbox
+  become: true
+  gather_facts: true
+  roles:
+    - role: preflight
+      tags: [preflight, always]
+    - role: mdns
+      tags: [mdns]
+    - role: firewall
+      tags: [firewall]
+    - role: docker
+      tags: [docker]
+    - role: portainer
+      tags: [portainer]
+
+- name: Verify Portainer from the Ansible controller
+  hosts: magicbox
+  become: false
+  gather_facts: false
+  tags: [verify, controller-verify]
+  vars:
+    controller_ca_path: >-
+      {{ (portainer_tls_mode | default('local_ca') == 'local_ca')
+         | ternary(playbook_dir ~ '/../artifacts/magicbox-local-ca.crt', portainer_tls_provided_ca_src | default('')) }}
+  tasks:
+    - name: Query Portainer over the LAN using magicbox.local and the trusted CA
+      ansible.builtin.uri:
+        url: "https://{{ magicbox_hostname }}.local:{{ portainer_https_port | default(9443) }}/api/system/status"
+        ca_path: "{{ controller_ca_path }}"
+        validate_certs: true
+      delegate_to: localhost
+      register: controller_portainer_status
+      retries: 5
+      delay: 3
+      until: controller_portainer_status.status == 200

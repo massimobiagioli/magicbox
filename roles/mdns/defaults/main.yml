@@ -1,0 +1,9 @@
+---
+# Publish AAAA records too. Disable if IPv6 on the LAN causes clients to
+# prefer unreachable addresses.
+mdns_use_ipv6: true
+
+mdns_packages:
+  - avahi-daemon
+  - avahi-utils
+  - libnss-mdns

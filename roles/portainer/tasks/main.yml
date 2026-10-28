@@ -1,0 +1,82 @@
+---
+- name: Create Portainer host directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ portainer_base_dir }}", mode: "0755" }
+    - { path: "{{ portainer_cert_dir }}", mode: "0700" }
+    - { path: "{{ portainer_secret_dir }}", mode: "0700" }
+
+- name: Provision TLS material
+  ansible.builtin.include_tasks:
+    file: "tls_{{ portainer_tls_mode }}.yml"
+    apply:
+      tags: [portainer, tls]
+  tags: [tls]
+
+- name: Write the bootstrap admin password file
+  ansible.builtin.copy:
+    dest: "{{ portainer_secret_dir }}/admin_password"
+    content: "{{ portainer_admin_password }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Create the persistent Portainer data volume
+  community.docker.docker_volume:
+    name: "{{ portainer_data_volume }}"
+    state: present
+
+- name: Run the Portainer container
+  community.docker.docker_container:
+    name: "{{ portainer_container_name }}"
+    image: "{{ portainer_image }}:{{ portainer_version }}"
+    pull: missing
+    state: started
+    restart_policy: unless-stopped
+    # Host networking keeps ufw authoritative for port {{ portainer_https_port }} (ADR-0004).
+    network_mode: host
+    command:
+      - --http-disabled
+      - "--bind-https=:{{ portainer_https_port }}"
+      - --sslcert=/certs/portainer.crt
+      - --sslkey=/certs/portainer.key
+      - --admin-password-file=/run/secrets/portainer_admin_password
+    mounts:
+      - { type: bind, source: /var/run/docker.sock, target: /var/run/docker.sock }
+      - { type: volume, source: "{{ portainer_data_volume }}", target: /data }
+      - { type: bind, source: "{{ portainer_cert_dir }}", target: /certs, read_only: true }
+      - type: bind
+        source: "{{ portainer_secret_dir }}/admin_password"
+        target: /run/secrets/portainer_admin_password
+        read_only: true
+    labels:
+      com.magicbox.managed-by: ansible
+
+- name: Restart Portainer when TLS material changed
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for Portainer HTTPS with certificate validation
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ portainer_https_port }}/api/system/status"
+    ca_path: "{{ portainer_cert_dir }}/ca.crt"
+    validate_certs: true
+    return_content: true
+  register: portainer_status
+  retries: 20
+  delay: 3
+  until: portainer_status.status == 200
+  tags: [verify]
+
+- name: Assert the running Portainer version matches the pinned version
+  ansible.builtin.assert:
+    that:
+      - portainer_status.json.Version == portainer_version
+    fail_msg: "Portainer reports {{ portainer_status.json.Version }}, expected {{ portainer_version }}."
+    quiet: true
+  tags: [verify]
