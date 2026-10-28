@@ -1,17 +1,43 @@
 ---
 # Portainer deploys asynchronously; first deployments include image pulls
 # (Ollama alone is about 3.4 GB), hence the 15-minute budget.
-- name: Wait until every stack container is running (and healthy when it has a healthcheck)
-  community.docker.docker_container_info:
-    name: "{{ item }}"
-  loop: "{{ stacks_enabled | map('extract', stacks_containers) | flatten }}"
-  register: stacks_container_info
-  retries: 150
-  delay: 6
-  until:
-    - stacks_container_info.exists
-    - stacks_container_info.container.State.Running
-    - (stacks_container_info.container.State.Health | default({})).Status | default('healthy') == 'healthy'
+- name: Wait for the stack containers
+  block:
+    - name: Wait until every stack container is running (and healthy when it has a healthcheck)
+      community.docker.docker_container_info:
+        name: "{{ item }}"
+      loop: "{{ stacks_enabled | map('extract', stacks_containers) | flatten }}"
+      register: stacks_container_info
+      retries: 150
+      delay: 6
+      until:
+        - stacks_container_info.exists
+        - stacks_container_info.container.State.Running
+        - (stacks_container_info.container.State.Health | default({})).Status | default('healthy') == 'healthy'
+  rescue:
+    - name: Collect the state of every stack container
+      ansible.builtin.command:
+        argv: [docker, ps, --all, --format, "{{ '{{.Names}}: {{.Status}}' }}"]
+      register: stacks_diag_ps
+      changed_when: false
+
+    - name: Collect the last log lines of each stack container
+      ansible.builtin.command:
+        argv: [docker, logs, --tail, "30", "{{ item }}"]
+      loop: "{{ stacks_enabled | map('extract', stacks_containers) | flatten }}"
+      register: stacks_diag_logs
+      changed_when: false
+      failed_when: false
+
+    - name: Report why the stack containers are not ready
+      ansible.builtin.fail:
+        msg: |-
+          Stack containers not ready. Containers:
+          {{ stacks_diag_ps.stdout }}
+          {% for r in stacks_diag_logs.results %}
+          --- {{ r.item }} (last 30 lines) ---
+          {{ ((r.stdout ~ '\n' ~ r.stderr) | trim) or 'container not found (check the stack in Portainer)' }}
+          {% endfor %}
 
 - name: Check PostgreSQL accepts connections
   community.docker.docker_container_exec:

@@ -59,6 +59,7 @@ make test-container ARGS="--with-stacks"                   # includes stacks (~4
 - `inventory/` - `hosts.example.yml`, `vault.example.yml`, `group_vars/magicbox/main.yml`
 - `tests/container/` - Dockerfile and inventory for the container test
 - `tools/` - project tools (below)
+- `.templates/python-fastapi-app/` - FastAPI app template (Python 3.15, uv, `/health`, Dockerfile); see its [README](.templates/python-fastapi-app/README.md)
 - `manuals/src/` - Markdown manual sources; `manuals/*.pdf` - generated PDFs
 - `.docs/` - constitution, principles, stack, ADRs
 

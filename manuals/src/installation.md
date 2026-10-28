@@ -246,7 +246,7 @@ renewed automatically by any playbook run within 30 days of expiry.
 | Vault password rejected at login | Portainer was already initialised: reset (8.4) |
 | `stacks`: "Portainer rejected the vault password" | Password changed in the UI: update `vault_portainer_admin_password` |
 | `stacks`: environment not found | Run `make deploy` first |
-| `stacks`: wait for containers times out | Slow image pull: re-run `make stacks`; check `sudo docker ps -a` |
+| `stacks`: wait for containers times out | The error lists container states and logs; slow pull: re-run `make stacks` |
 | Stack service rejects the vault password | Password was set at first start; change it in the service, then in the vault |
 
 ## 8. Recovery
