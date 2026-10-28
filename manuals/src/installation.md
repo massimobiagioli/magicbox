@@ -118,7 +118,7 @@ controller$ make check
 
 ```text
 controller$ cp inventory/hosts.example.yml inventory/hosts.yml
-controller$ uv run ansible-vault create inventory/group_vars/magicbox/vault.yml
+controller$ make vault-edit          # creates the encrypted vault on first use
 ```
 
 - [ ] In `inventory/hosts.yml`: set `ansible_user`, `magicbox_lan_interface`,
@@ -150,7 +150,21 @@ because it enables the firewall. The CA certificate is saved to
 `artifacts/magicbox-local-ca.crt`. Portainer is initialised with the
 `homelab` environment.
 
-Then deploy the default stacks (the first run pulls about 4 GB of images):
+Then pull the stack images on MagicBox (about 4 GB; shows progress and
+resumes after an interruption). Versions match `roles/stacks/defaults/main.yml`:
+
+```text
+magicbox$ sudo docker pull rabbitmq:4.3.7-management
+magicbox$ sudo docker pull postgres:18.6
+magicbox$ sudo docker pull ollama/ollama:0.40.12
+magicbox$ sudo docker pull grafana/grafana:13.2.5
+magicbox$ sudo docker pull grafana/loki:3.7.9
+magicbox$ sudo docker pull grafana/alloy:v1.21.2
+```
+
+- [ ] Each pull ends with `Status: Downloaded newer image` or `Image is up to date`.
+
+Deploy the default stacks:
 
 ```text
 controller$ make stacks
@@ -179,6 +193,7 @@ controller$ make idempotency VAULT_PASSWORD_FILE=<file>
 - [ ] `magicbox$ sudo ss -ltn | grep -E ':(9000|2375|2376) '` prints nothing.
 - [ ] Portainer > Environments shows `homelab`; Stacks shows `rabbitmq`,
       `postgresql`, `ollama`, `observability`.
+- [ ] `make status` reports every image and container as OK.
 - [ ] A second `make stacks` reports `changed=0`.
 
 Services (from the LAN):
@@ -246,6 +261,8 @@ renewed automatically by any playbook run within 30 days of expiry.
 | Vault password rejected at login | Portainer was already initialised: reset (8.4) |
 | `stacks`: "Portainer rejected the vault password" | Password changed in the UI: update `vault_portainer_admin_password` |
 | `stacks`: environment not found | Run `make deploy` first |
+| `make stacks` waits a long time | `make status` (MISSING image: pull it, see 4) |
+| Image pull stuck (Ollama) | `sudo docker pull ollama/ollama:0.40.12` on MagicBox; `df -h /var/lib` |
 | `stacks`: wait for containers times out | The error lists container states and logs; slow pull: re-run `make stacks` |
 | Stack service rejects the vault password | Password was set at first start; change it in the service, then in the vault |
 

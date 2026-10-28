@@ -1,9 +1,9 @@
 ---
 # Template for inventory/group_vars/magicbox/vault.yml (kept outside
 # group_vars so Ansible never loads it as real variables).
-# Create the real file with:
-#   uv run ansible-vault create inventory/group_vars/magicbox/vault.yml
-# and add the key below with a strong, unique value (minimum 12 characters).
+# Create or edit the real (encrypted) file with:
+#   make vault-edit
+# and set the keys below with a strong, unique value (minimum 12 characters).
 # The real vault.yml is git-ignored; never commit a plaintext password.
 vault_portainer_admin_password: ""
 

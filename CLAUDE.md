@@ -46,6 +46,8 @@ make deploy EXTRA="-e magicbox_confirm_destructive=true"   # first deployment
 make deploy          # later runs (asks the vault password; sudo password is in the vault)
 make verify
 make stacks          # default Portainer stacks
+make status          # read-only: stack images pulled, containers running/healthy
+make vault-edit      # edit the encrypted vault (creates it if missing)
 make update          # apt update + upgrade (EXTRA="-e os_update_reboot=true" reboots if needed)
 make test-container ARGS="--with-stacks"                   # includes stacks (~4 GB pulls)
 ```
@@ -54,6 +56,7 @@ make test-container ARGS="--with-stacks"                   # includes stacks (~4
 
 - `playbooks/site.yml` - host + Portainer (roles + controller verification play)
 - `playbooks/stacks.yml` - default Portainer stacks (RabbitMQ, PostgreSQL, Ollama, Grafana/Loki/Alloy)
+- `playbooks/status.yml` - read-only stack status (images, containers)
 - `playbooks/update.yml` - OS package update (apt update + upgrade), optional reboot
 - `roles/` - `preflight`, `mdns`, `firewall`, `docker`, `portainer`, `portainer_init`, `stacks`, `os_update`
 - `inventory/` - `hosts.example.yml`, `vault.example.yml`, `group_vars/magicbox/main.yml`

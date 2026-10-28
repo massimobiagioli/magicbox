@@ -47,6 +47,8 @@ Portainer*, that runs the `stacks` role on group `magicbox`. Run it after
 | Default stacks | `make stacks` |
 | Selected stacks only | `uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass -e '{"stacks_enabled": ["postgresql"]}'` |
 | Stacks: verification only | `uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass --tags verify` |
+| Stack status (read-only) | `make status` |
+| Edit the vault | `make vault-edit` |
 | OS package update | `make update` |
 | OS update + reboot if required | `make update EXTRA="-e os_update_reboot=true"` |
 | Idempotency on MagicBox | `make idempotency VAULT_PASSWORD_FILE=<file>` |
@@ -71,6 +73,7 @@ fresh host because the packages they verify are not installed yet.
 | `portainer` | The `portainer` and `portainer_init` roles, including TLS tasks |
 | `portainer-init` | Only the `portainer_init` role (site environment) |
 | `stacks` | The `stacks` role (in `playbooks/stacks.yml`) |
+| `status` | The read-only status report (in `playbooks/status.yml`) |
 | `update` | The `os_update` role (in `playbooks/update.yml`) |
 | `tls` | Only TLS provisioning inside `portainer` (certificate renewal, CA fetch) |
 | `verify` | Verification tasks in all roles plus the controller play; in `stacks.yml`, login, lookups and stack checks |
@@ -295,7 +298,8 @@ empty environment; rename the old one in the UI first.
 site environment (ADR-0011). For each name in `stacks_enabled` it renders
 `roles/stacks/templates/<name>.yml.j2`, passes the secrets as stack
 environment variables, and creates the stack, or updates it when the compose
-file or environment differs. Config files for `observability` are written to
+file or environment differs or one of its containers is missing (e.g. an
+interrupted first deployment). Config files for `observability` are written to
 `stacks_base_dir`; their checksum (`MAGICBOX_CONFIG_REVISION` label) forces a
 redeploy when they change.
 
@@ -343,6 +347,11 @@ PostgreSQL `pg_isready`. RabbitMQ `/api/overview` with the vault credentials.
 Ollama `/api/version`. Grafana `/api/health` over HTTPS with the MagicBox CA.
 Loki has a `container` label value `loki`, which proves Alloy -> Loki ->
 Grafana works.
+
+**Status.** `make status` (`playbooks/status.yml`, `tasks/status.yml`) changes
+nothing: it lists each image of the enabled stacks as OK or MISSING and each
+container as OK, NOT OK (stopped, restarting, unhealthy) or MISSING, and fails
+when anything is not OK.
 
 **Risks.**
 

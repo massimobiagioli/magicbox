@@ -3,12 +3,13 @@ UV ?= uv
 RUN := $(UV) run
 COLLECTIONS := .ansible/collections
 LINT_INVENTORY := inventory/hosts.example.yml
+VAULT_FILE := inventory/group_vars/magicbox/vault.yml
 # The sudo password comes from the vault (vault_become_password); BECOME=-K
 # prompts for it instead.
 BECOME ?=
 
 .PHONY: help setup lint syntax docs-check secrets-check manuals manuals-check check \
-        test-container deploy verify idempotency stacks update
+        test-container deploy verify idempotency stacks status update vault-edit
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-16s %s\n", $$1, $$2}'
@@ -18,7 +19,7 @@ setup: ## Create .venv from uv.lock and install pinned Ansible collections
 	$(RUN) ansible-galaxy collection install -r requirements.yml -p $(COLLECTIONS)
 
 syntax: ## Ansible syntax check
-	$(RUN) ansible-playbook -i $(LINT_INVENTORY) playbooks/site.yml playbooks/stacks.yml playbooks/update.yml --syntax-check
+	$(RUN) ansible-playbook -i $(LINT_INVENTORY) playbooks/site.yml playbooks/stacks.yml playbooks/status.yml playbooks/update.yml --syntax-check
 
 lint: syntax ## yamllint + ansible-lint (production profile)
 	$(RUN) yamllint .
@@ -53,5 +54,13 @@ idempotency: ## Run twice against MagicBox; second run must change nothing (need
 stacks: ## Deploy the default Portainer stacks to MagicBox (run deploy first)
 	$(RUN) ansible-playbook playbooks/stacks.yml --ask-vault-pass $(BECOME) $(EXTRA)
 
+status: ## Read-only: are stack images pulled and containers running/healthy on MagicBox?
+	$(RUN) ansible-playbook playbooks/status.yml --ask-vault-pass $(BECOME) $(EXTRA)
+
 update: ## apt update + upgrade on MagicBox (EXTRA="-e os_update_reboot=true" to reboot if needed)
 	$(RUN) ansible-playbook playbooks/update.yml --ask-vault-pass $(BECOME) $(EXTRA)
+
+vault-edit: ## Edit the encrypted vault (creates it from inventory/vault.example.yml if missing)
+	@test -f $(VAULT_FILE) || { cp inventory/vault.example.yml $(VAULT_FILE) && $(RUN) ansible-vault encrypt $(VAULT_FILE) \
+		|| { rm -f $(VAULT_FILE); exit 1; }; }
+	$(RUN) ansible-vault edit $(VAULT_FILE)

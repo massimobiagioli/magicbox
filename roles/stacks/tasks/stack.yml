@@ -40,7 +40,16 @@
   changed_when: true
   no_log: true
 
-- name: "Update the stack when its compose file or environment changed: {{ stacks_name }}"
+# A stack can exist in Portainer without containers (e.g. its deployment was
+# interrupted during a long image pull); redeploying it recreates them.
+- name: "Read the containers of {{ stacks_name }}"
+  community.docker.docker_container_info:
+    name: "{{ item }}"
+  loop: "{{ stacks_containers[stacks_name] }}"
+  register: stacks_current_containers
+  when: stacks_current | length > 0
+
+- name: "Update the stack when its compose file or environment changed, or containers are missing: {{ stacks_name }}"
   ansible.builtin.uri:
     url: "{{ magicbox_portainer_api_url }}/api/stacks/{{ stacks_current[0].Id }}?endpointId={{ stacks_endpoint_id }}"
     method: PUT
@@ -58,6 +67,7 @@
     - stacks_current | length > 0
     - (stacks_current_file.json.StackFileContent != stacks_desired_compose)
       or ((stacks_current[0].Env | default([], true) | sort(attribute='name')) != stacks_desired_env)
+      or (stacks_current_containers.results | rejectattr('exists') | list | length > 0)
   changed_when: true
   no_log: true
 

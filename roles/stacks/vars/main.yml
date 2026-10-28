@@ -26,3 +26,9 @@ stacks_containers:
   postgresql: [postgresql]
   ollama: [ollama]
   observability: [loki, alloy, grafana]
+
+stacks_images:
+  rabbitmq: ["{{ stacks_rabbitmq_image }}"]
+  postgresql: ["{{ stacks_postgresql_image }}"]
+  ollama: ["{{ stacks_ollama_image }}"]
+  observability: ["{{ stacks_loki_image }}", "{{ stacks_alloy_image }}", "{{ stacks_grafana_image }}"]

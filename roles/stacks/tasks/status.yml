@@ -1,0 +1,47 @@
+---
+# Read-only report: are the images of the enabled stacks pulled and their
+# containers running/healthy? Used by playbooks/status.yml (make status).
+- name: Read the stack images present on MagicBox
+  community.docker.docker_image_info:
+    name: "{{ stacks_enabled | map('extract', stacks_images) | flatten }}"
+  register: stacks_status_images
+
+- name: Read the stack containers
+  community.docker.docker_container_info:
+    name: "{{ item }}"
+  loop: "{{ stacks_enabled | map('extract', stacks_containers) | flatten }}"
+  register: stacks_status_containers
+
+- name: Build the status report
+  ansible.builtin.set_fact:
+    stacks_status_report: >-
+      {%- set present = stacks_status_images.images | map(attribute='RepoTags') | flatten -%}
+      {%- set lines = [] -%}
+      {%- for image in stacks_enabled | map('extract', stacks_images) | flatten -%}
+      {%- set _ = lines.append(('OK      ' if image in present else 'MISSING ') ~ 'image     ' ~ image) -%}
+      {%- endfor -%}
+      {%- for r in stacks_status_containers.results -%}
+      {%- if not r.exists -%}
+      {%- set _ = lines.append('MISSING container ' ~ r.item) -%}
+      {%- else -%}
+      {%- set state = r.container.State -%}
+      {%- set health = (state.Health | default({})).Status | default('') -%}
+      {%- set ok = state.Running and health in ['', 'healthy'] -%}
+      {%- set _ = lines.append(('OK      ' if ok else 'NOT OK  ') ~ 'container ' ~ r.item ~ ': '
+            ~ state.Status ~ ((' (' ~ health ~ ')') if health else '')) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ lines }}
+
+- name: Show the stack status
+  ansible.builtin.debug:
+    msg: "{{ stacks_status_report }}"
+
+- name: Assert every stack image and container is OK
+  ansible.builtin.assert:
+    that: stacks_status_report | reject('match', '^OK ') | list | length == 0
+    fail_msg: >-
+      Not ready: {{ stacks_status_report | reject('match', '^OK ') | join('; ') }}.
+      Missing image: sudo docker pull <image> on MagicBox. Missing container: make stacks.
+      NOT OK: sudo docker logs <container>.
+    quiet: true

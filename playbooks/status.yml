@@ -1,0 +1,14 @@
+---
+# Read-only status of the default stacks: images pulled, containers running
+# and healthy. Changes nothing.
+# Run: make status
+- name: Report default stacks status
+  hosts: magicbox
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Report images and containers of the enabled stacks
+      ansible.builtin.include_role:
+        name: stacks
+        tasks_from: status
+      tags: [status]
