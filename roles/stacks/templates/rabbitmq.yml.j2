@@ -1,0 +1,27 @@
+# {{ ansible_managed }}
+# RabbitMQ message broker with the management UI.
+services:
+  rabbitmq:
+    image: {{ stacks_rabbitmq_image }}
+    container_name: rabbitmq
+    # RabbitMQ stores data per node name; a fixed hostname keeps it stable.
+    hostname: rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - "{{ stacks_rabbitmq_amqp_port }}:5672"
+      - "{{ stacks_rabbitmq_management_port }}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  rabbitmq_data:
+    name: rabbitmq_data

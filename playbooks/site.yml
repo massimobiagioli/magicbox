@@ -16,6 +16,8 @@
       tags: [docker]
     - role: portainer
       tags: [portainer]
+    - role: portainer_init
+      tags: [portainer, portainer-init]
 
 - name: Verify Portainer from the Ansible controller
   hosts: magicbox

@@ -1,0 +1,61 @@
+---
+# Portainer deploys asynchronously; first deployments include image pulls
+# (Ollama alone is about 3.4 GB), hence the 15-minute budget.
+- name: Wait until every stack container is running (and healthy when it has a healthcheck)
+  community.docker.docker_container_info:
+    name: "{{ item }}"
+  loop: "{{ stacks_enabled | map('extract', stacks_containers) | flatten }}"
+  register: stacks_container_info
+  retries: 150
+  delay: 6
+  until:
+    - stacks_container_info.exists
+    - stacks_container_info.container.State.Running
+    - (stacks_container_info.container.State.Health | default({})).Status | default('healthy') == 'healthy'
+
+- name: Check PostgreSQL accepts connections
+  community.docker.docker_container_exec:
+    container: postgresql
+    argv: [pg_isready, -U, "{{ stacks_postgresql_user }}", -d, "{{ stacks_postgresql_database }}"]
+  changed_when: false
+  when: "'postgresql' in stacks_enabled"
+
+- name: Check the RabbitMQ management API with the vault credentials
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ stacks_rabbitmq_management_port }}/api/overview"
+    url_username: "{{ stacks_rabbitmq_user }}"
+    url_password: "{{ stacks_rabbitmq_password }}"
+    force_basic_auth: true
+  when: "'rabbitmq' in stacks_enabled"
+  no_log: true
+
+- name: Check the Ollama API
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ stacks_ollama_port }}/api/version"
+  when: "'ollama' in stacks_enabled"
+
+- name: Check Grafana over HTTPS with the MagicBox CA
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_grafana_port }}/api/health"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+  register: stacks_grafana_health
+  retries: 20
+  delay: 3
+  until: stacks_grafana_health.status == 200
+  when: "'observability' in stacks_enabled"
+
+- name: Check that Loki receives container logs shipped by Alloy (via Grafana)
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_grafana_port }}/api/datasources/proxy/uid/loki/loki/api/v1/label/container/values"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    url_username: admin
+    url_password: "{{ stacks_grafana_admin_password }}"
+    force_basic_auth: true
+  register: stacks_loki_containers
+  retries: 30
+  delay: 5
+  until:
+    - stacks_loki_containers.status == 200
+    - "'loki' in (stacks_loki_containers.json.data | default([]))"
+  when: "'observability' in stacks_enabled"
+  no_log: true

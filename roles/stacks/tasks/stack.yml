@@ -1,0 +1,66 @@
+---
+# Deploys one stack (stacks_name) through the Portainer API, idempotently.
+- name: "Write configuration files for {{ stacks_name }}"
+  ansible.builtin.include_tasks: "config_{{ stacks_name }}.yml"
+  when: stacks_name == 'observability'
+
+- name: "Compute the desired state of {{ stacks_name }}"
+  ansible.builtin.set_fact:
+    stacks_desired_compose: "{{ lookup('ansible.builtin.template', stacks_name ~ '.yml.j2') }}"
+    stacks_desired_env: >-
+      {{ (stacks_env[stacks_name] | combine({'MAGICBOX_CONFIG_REVISION': stacks_config_revision | default('none')}))
+         | dict2items(key_name='name', value_name='value') | sort(attribute='name') }}
+    stacks_current: "{{ stacks_existing.json | selectattr('Name', '==', stacks_name)
+      | selectattr('EndpointId', '==', stacks_endpoint_id | int) | list }}"
+  no_log: true
+
+- name: "Read the deployed compose file of {{ stacks_name }}"
+  ansible.builtin.uri:
+    url: "{{ magicbox_portainer_api_url }}/api/stacks/{{ stacks_current[0].Id }}/file"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers:
+      Authorization: "Bearer {{ portainer_init_jwt }}"
+  register: stacks_current_file
+  when: stacks_current | length > 0
+
+- name: "Create stack {{ stacks_name }}"
+  ansible.builtin.uri:
+    url: "{{ magicbox_portainer_api_url }}/api/stacks/create/standalone/string?endpointId={{ stacks_endpoint_id }}"
+    method: POST
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers:
+      Authorization: "Bearer {{ portainer_init_jwt }}"
+    body_format: json
+    body:
+      name: "{{ stacks_name }}"
+      stackFileContent: "{{ stacks_desired_compose }}"
+      env: "{{ stacks_desired_env }}"
+    timeout: 900
+  when: stacks_current | length == 0
+  changed_when: true
+  no_log: true
+
+- name: "Update the stack when its compose file or environment changed: {{ stacks_name }}"
+  ansible.builtin.uri:
+    url: "{{ magicbox_portainer_api_url }}/api/stacks/{{ stacks_current[0].Id }}?endpointId={{ stacks_endpoint_id }}"
+    method: PUT
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers:
+      Authorization: "Bearer {{ portainer_init_jwt }}"
+    body_format: json
+    body:
+      stackFileContent: "{{ stacks_desired_compose }}"
+      env: "{{ stacks_desired_env }}"
+      prune: true
+      pullImage: false
+    timeout: 900
+  when:
+    - stacks_current | length > 0
+    - (stacks_current_file.json.StackFileContent != stacks_desired_compose)
+      or ((stacks_current[0].Env | default([], true) | sort(attribute='name')) != stacks_desired_env)
+  changed_when: true
+  no_log: true
+
+- name: "Reset the configuration revision after {{ stacks_name }}"
+  ansible.builtin.set_fact:
+    stacks_config_revision: none

@@ -45,12 +45,15 @@ make manuals         # build manuals/*.pdf from manuals/src/*.md
 make deploy EXTRA="-K -e magicbox_confirm_destructive=true"   # first deployment
 make deploy EXTRA="-K"                                        # later runs
 make verify EXTRA="-K"
+make stacks EXTRA="-K"                                        # default Portainer stacks
+make test-container ARGS="--with-stacks"                      # includes stacks (~4 GB pulls)
 ```
 
 ## Layout
 
-- `playbooks/site.yml` - main playbook (roles + controller verification play)
-- `roles/` - `preflight`, `mdns`, `firewall`, `docker`, `portainer`
+- `playbooks/site.yml` - host + Portainer (roles + controller verification play)
+- `playbooks/stacks.yml` - default Portainer stacks (RabbitMQ, PostgreSQL, Ollama, Grafana/Loki/Alloy)
+- `roles/` - `preflight`, `mdns`, `firewall`, `docker`, `portainer`, `portainer_init`, `stacks`
 - `inventory/` - `hosts.example.yml`, `vault.example.yml`, `group_vars/magicbox/main.yml`
 - `tests/container/` - Dockerfile and inventory for the container test
 - `tools/` - project tools (below)
@@ -74,6 +77,10 @@ make verify EXTRA="-K"
   - [ADR-0007](.docs/adr/adr-0007.md) - PDF manuals from Markdown (pure Python)
   - [ADR-0008](.docs/adr/adr-0008.md) - Confirmation for destructive changes
   - [ADR-0009](.docs/adr/adr-0009.md) - Tools in tools/ and container tests
+  - [ADR-0010](.docs/adr/adr-0010.md) - Portainer initialisation and the "homelab" site
+  - [ADR-0011](.docs/adr/adr-0011.md) - Default stacks as Portainer stacks
+  - [ADR-0012](.docs/adr/adr-0012.md) - DOCKER-USER filter for published ports
+  - [ADR-0013](.docs/adr/adr-0013.md) - Grafana Alloy instead of Promtail (EOL)
 
 ## Manuals
 
@@ -90,4 +97,4 @@ produces deterministic PDFs.
 - [tools/check_docs.py](tools/check_docs.py) - broken links, this index, ADR numbering/sections/registry, playbook-reference coverage, PDFs present
 - [tools/check_secrets.py](tools/check_secrets.py) - vault file encrypted; no plaintext `vault_*` values or private keys tracked
 - [tools/idempotency_check.py](tools/idempotency_check.py) - runs `ansible-playbook` twice, fails if the second run changes anything
-- [tools/container_test.py](tools/container_test.py) - disposable systemd container: full converge + idempotency check
+- [tools/container_test.py](tools/container_test.py) - disposable systemd container: full converge + idempotency check (`--with-stacks` adds the stacks playbook)

@@ -1,6 +1,8 @@
 # MagicBox Installation Guide
 
-Goal: Portainer reachable from the LAN at **https://magicbox.local:9443/**.
+Goal: Portainer reachable from the LAN at **https://magicbox.local:9443/**,
+with the `homelab` environment and the default stacks (RabbitMQ, PostgreSQL,
+Ollama, Grafana + Loki + Alloy).
 MagicBox has no fixed IP: it is always reached as `magicbox.local` (mDNS via
 Avahi).
 `magicbox$` = on the Mini PC, `controller$` = on your workstation in this
@@ -101,8 +103,11 @@ controller$ uv run ansible-vault create inventory/group_vars/magicbox/vault.yml
 
 - [ ] In `inventory/hosts.yml`: set `ansible_user`, `magicbox_lan_interface`,
       `magicbox_lan_cidr` (1.7). Keep `ansible_host: magicbox.local`.
-- [ ] In `vault.yml`: `vault_portainer_admin_password: "<12+ chars>"`.
-      Keep the vault password in your password manager.
+- [ ] In `vault.yml`, four different passwords of 12+ characters (see
+      `inventory/vault.example.yml`): `vault_portainer_admin_password`,
+      `vault_postgresql_password`, `vault_rabbitmq_password`,
+      `vault_grafana_admin_password`. Keep the vault password in your password
+      manager.
 
 ```text
 controller$ make secrets-check
@@ -118,7 +123,20 @@ controller$ make deploy EXTRA="-K"                                        # late
 
 `-K` asks for the sudo password. The first run needs the confirmation flag
 because it enables the firewall. The CA certificate is saved to
-`artifacts/magicbox-local-ca.crt`.
+`artifacts/magicbox-local-ca.crt`. Portainer is initialised with the
+`homelab` environment.
+
+Then deploy the default stacks (the first run pulls about 4 GB of images):
+
+```text
+controller$ make stacks EXTRA="-K"
+```
+
+Deploy only some stacks:
+
+```text
+controller$ uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass -K -e '{"stacks_enabled": ["postgresql"]}'
+```
 
 ## 5. Verification
 
@@ -135,6 +153,21 @@ controller$ make idempotency VAULT_PASSWORD_FILE=<file> EXTRA="--become-password
       no warning; log in as `admin` with the vault password.
 - [ ] `sudo reboot` on MagicBox: the page comes back, settings kept.
 - [ ] `magicbox$ sudo ss -ltn | grep -E ':(9000|2375|2376) '` prints nothing.
+- [ ] Portainer > Environments shows `homelab`; Stacks shows `rabbitmq`,
+      `postgresql`, `ollama`, `observability`.
+- [ ] A second `make stacks EXTRA="-K"` reports `changed=0`.
+
+Services (from the LAN):
+
+| Service | Address | Login |
+|---------|---------|-------|
+| Grafana | `https://magicbox.local:3000/` | `admin` / `vault_grafana_admin_password` |
+| RabbitMQ UI | `http://magicbox.local:15672/` | `magicbox` / `vault_rabbitmq_password` |
+| RabbitMQ AMQP | `amqp://magicbox.local:5672` | same as UI |
+| PostgreSQL | `magicbox.local:5432`, database `magicbox` | `magicbox` / `vault_postgresql_password` |
+| Ollama | `http://magicbox.local:11434/` | none (LAN only) |
+
+- [ ] Grafana > Explore > Loki: `{container="postgresql"}` shows logs.
 
 ## 6. TLS trust (each client, once)
 
@@ -184,6 +217,10 @@ renewed automatically by any playbook run within 30 days of expiry.
 | Certificate warning | Install the CA (section 6); restart the browser |
 | Connection refused | `sudo docker ps -a`; `sudo docker logs portainer`; `sudo ufw status` |
 | Vault password rejected at login | Portainer was already initialised: reset (8.3) |
+| `stacks`: "Portainer rejected the vault password" | Password changed in the UI: update `vault_portainer_admin_password` |
+| `stacks`: environment not found | Run `make deploy` first |
+| `stacks`: wait for containers times out | Slow image pull: re-run `make stacks`; check `sudo docker ps -a` |
+| Stack service rejects the vault password | Password was set at first start; change it in the service, then in the vault |
 
 ## 8. Recovery
 
@@ -212,6 +249,15 @@ magicbox$ sudo docker start portainer
 magicbox$ sudo docker stop portainer
 magicbox$ sudo tar -C / -czf /root/magicbox-backup-$(date +%F).tgz opt/magicbox var/lib/docker/volumes/portainer_data
 magicbox$ sudo docker start portainer
+```
+
+Stack data lives in the volumes `postgresql_data`, `rabbitmq_data`,
+`grafana_data`, `loki_data` and `ollama_data` under `/var/lib/docker/volumes/`.
+Stop the stack in Portainer before copying a volume. For PostgreSQL, prefer
+a logical dump:
+
+```text
+magicbox$ sudo docker exec postgresql pg_dumpall -U magicbox | gzip > magicbox-pg-$(date +%F).sql.gz
 ```
 
 The archive contains the CA key: store it encrypted, off the box. To restore,

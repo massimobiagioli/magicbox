@@ -1,0 +1,76 @@
+---
+- name: Assert only known stacks are enabled
+  ansible.builtin.assert:
+    that:
+      - stacks_enabled | difference(stacks_env.keys() | list) | length == 0
+    fail_msg: "Unknown stacks: {{ stacks_enabled | difference(stacks_env.keys() | list) }}"
+    quiet: true
+
+- name: Assert stack passwords are provided via Ansible Vault
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.vars', item) | length >= 12
+    fail_msg: >-
+      {{ item }} must be at least 12 characters; set the matching vault_* variable in
+      inventory/group_vars/magicbox/vault.yml (see inventory/vault.example.yml).
+    quiet: true
+  loop: "{{ stacks_enabled | map('extract', stacks_required_secrets) | flatten }}"
+  no_log: true
+
+- name: Create the stacks base directory
+  ansible.builtin.file:
+    path: "{{ stacks_base_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Authenticate against Portainer
+  ansible.builtin.include_role:
+    name: portainer_init
+    tasks_from: api_login
+
+- name: Look up the site environment
+  ansible.builtin.uri:
+    url: "{{ magicbox_portainer_api_url }}/api/endpoints?name={{ magicbox_site_name | urlencode }}"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers:
+      Authorization: "Bearer {{ portainer_init_jwt }}"
+  register: stacks_site_lookup
+
+- name: Record the site environment id
+  ansible.builtin.set_fact:
+    stacks_endpoint_id: "{{ (stacks_site_lookup.json | selectattr('Name', '==', magicbox_site_name) | first).Id }}"
+  when: stacks_site_lookup.json | selectattr('Name', '==', magicbox_site_name) | list | length == 1
+
+- name: Fail when the site environment does not exist
+  ansible.builtin.fail:
+    msg: "Portainer environment '{{ magicbox_site_name }}' not found; run playbooks/site.yml first."
+  when: stacks_endpoint_id is not defined
+
+- name: List existing Portainer stacks
+  ansible.builtin.uri:
+    url: "{{ magicbox_portainer_api_url }}/api/stacks"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers:
+      Authorization: "Bearer {{ portainer_init_jwt }}"
+  register: stacks_existing
+
+- name: Deploy each enabled stack
+  ansible.builtin.include_tasks: stack.yml
+  loop: "{{ stacks_enabled }}"
+  loop_control:
+    loop_var: stacks_name
+
+- name: Verify the deployed stacks
+  ansible.builtin.include_tasks:
+    file: verify.yml
+    apply:
+      tags: [stacks, verify]
+  tags: [stacks, verify]
+
+- name: Pull Ollama models
+  ansible.builtin.include_tasks: ollama_models.yml
+  when:
+    - "'ollama' in stacks_enabled"
+    - stacks_ollama_models | length > 0

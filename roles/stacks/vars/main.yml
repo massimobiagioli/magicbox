@@ -1,0 +1,28 @@
+---
+# Environment passed to each Portainer stack. Secrets live here (resolved
+# from the vault), never in the compose files.
+stacks_env:
+  rabbitmq:
+    RABBITMQ_DEFAULT_USER: "{{ stacks_rabbitmq_user }}"
+    RABBITMQ_DEFAULT_PASS: "{{ stacks_rabbitmq_password }}"
+  postgresql:
+    POSTGRES_USER: "{{ stacks_postgresql_user }}"
+    POSTGRES_PASSWORD: "{{ stacks_postgresql_password }}"
+    POSTGRES_DB: "{{ stacks_postgresql_database }}"
+  ollama: {}
+  observability:
+    GF_SECURITY_ADMIN_PASSWORD: "{{ stacks_grafana_admin_password }}"
+
+# Passwords each stack needs (checked before deployment).
+stacks_required_secrets:
+  rabbitmq: [stacks_rabbitmq_password]
+  postgresql: [stacks_postgresql_password]
+  ollama: []
+  observability: [stacks_grafana_admin_password]
+
+# Containers created by each stack (used by verification).
+stacks_containers:
+  rabbitmq: [rabbitmq]
+  postgresql: [postgresql]
+  ollama: [ollama]
+  observability: [loki, alloy, grafana]

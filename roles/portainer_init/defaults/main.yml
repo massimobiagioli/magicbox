@@ -1,0 +1,4 @@
+---
+# Portainer user the playbooks authenticate as. Its password is the bootstrap
+# admin password from the vault (portainer_admin_password).
+portainer_init_api_user: admin

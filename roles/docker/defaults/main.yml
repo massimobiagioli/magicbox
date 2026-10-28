@@ -26,6 +26,7 @@ docker_conflicting_packages:
   - containerd
   - runc
 
-# Container log rotation (json-file driver).
+# Container log rotation (json-file driver). Each log line also carries the
+# container name (log-opt tag), which Alloy turns into a label (ADR-0013).
 docker_log_max_size: 10m
 docker_log_max_file: 3

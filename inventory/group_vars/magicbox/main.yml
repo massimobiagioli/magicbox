@@ -19,3 +19,12 @@ magicbox_confirm_destructive: false
 # Secrets come from inventory/group_vars/magicbox/vault.yml (git-ignored,
 # ansible-vault encrypted). See inventory/vault.example.yml.
 portainer_admin_password: "{{ vault_portainer_admin_password }}"
+
+# Portainer environment ("site") representing MagicBox's local Docker engine.
+# Created by the portainer_init role; the stacks playbook deploys into it.
+magicbox_site_name: homelab
+
+# Portainer API endpoint and CA used by portainer_init and stacks. Keep in sync
+# with portainer_https_port and portainer_cert_dir (portainer role).
+magicbox_portainer_api_url: "https://{{ magicbox_hostname }}.local:9443"
+magicbox_portainer_ca_cert: /opt/magicbox/portainer/certs/ca.crt

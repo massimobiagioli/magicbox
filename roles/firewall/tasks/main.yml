@@ -70,6 +70,44 @@
   community.general.ufw:
     logging: "{{ firewall_logging }}"
 
+- name: Restrict Docker-published ports to the LAN (DOCKER-USER chain)
+  ansible.builtin.blockinfile:
+    path: /etc/ufw/after.rules
+    marker: "# {mark} MAGICBOX DOCKER-USER (managed by Ansible, role: firewall)"
+    block: |
+      *filter
+      :DOCKER-USER - [0:0]
+      -A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
+      -A DOCKER-USER -i {{ magicbox_lan_interface }} -s {{ magicbox_lan_cidr }} -j RETURN
+      -A DOCKER-USER -i {{ magicbox_lan_interface }} -j DROP
+      -A DOCKER-USER -j RETURN
+      COMMIT
+    state: "{{ firewall_docker_user_filter | ternary('present', 'absent') }}"
+  notify: Reload ufw
+
 - name: Enable ufw (persists across reboots)
   community.general.ufw:
     state: enabled
+
+- name: Apply pending firewall changes before verification
+  ansible.builtin.meta: flush_handlers
+
+- name: Read the DOCKER-USER chain
+  ansible.builtin.command:
+    argv: [iptables, -S, DOCKER-USER]
+  register: firewall_docker_user_rules
+  changed_when: false
+  when: firewall_docker_user_filter | bool
+  tags: [verify]
+
+- name: Assert published container ports are limited to the LAN
+  ansible.builtin.assert:
+    that:
+      - >-
+        ("-A DOCKER-USER -s " ~ magicbox_lan_cidr ~ " -i " ~ magicbox_lan_interface ~ " -j RETURN")
+        in firewall_docker_user_rules.stdout_lines
+      - ("-A DOCKER-USER -i " ~ magicbox_lan_interface ~ " -j DROP") in firewall_docker_user_rules.stdout_lines
+    fail_msg: "DOCKER-USER does not restrict published ports to {{ magicbox_lan_cidr }}."
+    quiet: true
+  when: firewall_docker_user_filter | bool
+  tags: [verify]

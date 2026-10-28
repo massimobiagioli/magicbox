@@ -1,0 +1,12 @@
+---
+# Default MagicBox stacks (RabbitMQ, PostgreSQL, Ollama, Grafana + Loki + Alloy),
+# deployed as Portainer stacks into the site environment (magicbox_site_name).
+# Requires playbooks/site.yml to have run first.
+# Run: uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass
+- name: Deploy default stacks through Portainer
+  hosts: magicbox
+  become: true
+  gather_facts: false
+  roles:
+    - role: stacks
+      tags: [stacks]

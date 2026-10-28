@@ -5,7 +5,7 @@ COLLECTIONS := .ansible/collections
 LINT_INVENTORY := inventory/hosts.example.yml
 
 .PHONY: help setup lint syntax docs-check secrets-check manuals manuals-check check \
-        test-container deploy verify idempotency
+        test-container deploy verify idempotency stacks
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-16s %s\n", $$1, $$2}'
@@ -15,7 +15,7 @@ setup: ## Create .venv from uv.lock and install pinned Ansible collections
 	$(RUN) ansible-galaxy collection install -r requirements.yml -p $(COLLECTIONS)
 
 syntax: ## Ansible syntax check
-	$(RUN) ansible-playbook -i $(LINT_INVENTORY) playbooks/site.yml --syntax-check
+	$(RUN) ansible-playbook -i $(LINT_INVENTORY) playbooks/site.yml playbooks/stacks.yml --syntax-check
 
 lint: syntax ## yamllint + ansible-lint (production profile)
 	$(RUN) yamllint .
@@ -35,8 +35,8 @@ manuals-check: ## Rebuild manuals and fail if committed PDFs were stale
 
 check: lint secrets-check manuals docs-check ## All local checks (no target host needed)
 
-test-container: ## Converge + idempotency test in a disposable systemd container
-	$(RUN) tools/container_test.py
+test-container: ## Converge + idempotency test in a disposable systemd container (ARGS="--with-stacks" adds stacks)
+	$(RUN) tools/container_test.py $(ARGS)
 
 deploy: ## Apply the playbook to MagicBox (pass EXTRA="-e magicbox_confirm_destructive=true" on first run)
 	$(RUN) ansible-playbook playbooks/site.yml --ask-vault-pass $(EXTRA)
@@ -46,3 +46,6 @@ verify: ## Run only verify-tagged tasks against MagicBox (EXTRA="-K" for a sudo 
 
 idempotency: ## Run twice against MagicBox; second run must change nothing (needs VAULT_PASSWORD_FILE)
 	$(RUN) tools/idempotency_check.py playbooks/site.yml --vault-password-file $(VAULT_PASSWORD_FILE) $(EXTRA)
+
+stacks: ## Deploy the default Portainer stacks to MagicBox (run deploy first)
+	$(RUN) ansible-playbook playbooks/stacks.yml --ask-vault-pass $(EXTRA)

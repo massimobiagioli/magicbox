@@ -1,7 +1,8 @@
 # MagicBox
 
 Ansible setup for a GMKtec Intel Mini PC: Docker and Portainer CE, served on
-the LAN at **https://magicbox.local:9443/**.
+the LAN at **https://magicbox.local:9443/**, plus default stacks: RabbitMQ,
+PostgreSQL, Ollama, and Grafana + Loki + Alloy.
 
 ## Quick start
 
@@ -10,6 +11,7 @@ make setup && make check
 cp inventory/hosts.example.yml inventory/hosts.yml   # fill in your values
 uv run ansible-vault create inventory/group_vars/magicbox/vault.yml
 make deploy EXTRA="-K -e magicbox_confirm_destructive=true"
+make stacks EXTRA="-K"
 ```
 
 ## Docs

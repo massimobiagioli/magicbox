@@ -6,3 +6,8 @@
 # and add the key below with a strong, unique value (minimum 12 characters).
 # The real vault.yml is git-ignored; never commit a plaintext password.
 vault_portainer_admin_password: ""
+
+# Default stacks (playbooks/stacks.yml); each at least 12 characters.
+vault_postgresql_password: ""
+vault_rabbitmq_password: ""
+vault_grafana_admin_password: ""

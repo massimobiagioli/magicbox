@@ -1,0 +1,63 @@
+---
+- name: Authenticate against Portainer
+  ansible.builtin.include_tasks: api_login.yml
+
+- name: List Portainer environments
+  ansible.builtin.uri:
+    url: "{{ magicbox_portainer_api_url }}/api/endpoints"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers:
+      Authorization: "Bearer {{ portainer_init_jwt }}"
+  register: portainer_init_endpoints
+
+- name: Find the site environment and any differently named local Docker environment
+  ansible.builtin.set_fact:
+    portainer_init_site: "{{ portainer_init_endpoints.json | selectattr('Name', '==', magicbox_site_name) | list }}"
+    portainer_init_local: >-
+      {{ portainer_init_endpoints.json | selectattr('URL', '==', 'unix:///var/run/docker.sock')
+         | selectattr('Type', '==', 1) | list }}
+
+- name: Rename the existing local Docker environment to the site name
+  ansible.builtin.uri:
+    url: "{{ magicbox_portainer_api_url }}/api/endpoints/{{ portainer_init_local[0].Id }}"
+    method: PUT
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers:
+      Authorization: "Bearer {{ portainer_init_jwt }}"
+    body_format: json
+    body:
+      name: "{{ magicbox_site_name }}"
+  when: portainer_init_site | length == 0 and portainer_init_local | length > 0
+  changed_when: true
+
+- name: Create the site environment for the local Docker engine
+  ansible.builtin.uri:
+    url: "{{ magicbox_portainer_api_url }}/api/endpoints"
+    method: POST
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers:
+      Authorization: "Bearer {{ portainer_init_jwt }}"
+    body_format: form-multipart
+    body:
+      Name: "{{ magicbox_site_name }}"
+      EndpointCreationType: "1"
+  when: portainer_init_site | length == 0 and portainer_init_local | length == 0
+  changed_when: true
+
+- name: Read the site environment
+  ansible.builtin.uri:
+    url: "{{ magicbox_portainer_api_url }}/api/endpoints?name={{ magicbox_site_name | urlencode }}"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers:
+      Authorization: "Bearer {{ portainer_init_jwt }}"
+  register: portainer_init_site_check
+  tags: [verify]
+
+- name: Assert the site environment exists and points at the local Docker socket
+  ansible.builtin.assert:
+    that:
+      - portainer_init_site_check.json | selectattr('Name', '==', magicbox_site_name) | list | length == 1
+      - (portainer_init_site_check.json | selectattr('Name', '==', magicbox_site_name) | first).URL == 'unix:///var/run/docker.sock'
+    fail_msg: "Portainer environment '{{ magicbox_site_name }}' is missing or not the local Docker engine."
+    quiet: true
+  tags: [verify]

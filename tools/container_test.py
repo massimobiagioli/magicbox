@@ -2,12 +2,14 @@
 """End-to-end test of playbooks/site.yml against a disposable systemd container.
 
 Usage:
-    uv run tools/container_test.py [--keep]
+    uv run tools/container_test.py [--keep] [--with-stacks]
 
 Builds tests/container/Dockerfile, starts a privileged systemd container named
 `magicbox-test`, runs the playbook twice through tools/idempotency_check.py
 (confirming destructive steps, which only affect the container), and removes
-the container unless --keep is given. Requires a local Docker daemon.
+the container unless --keep is given. With --with-stacks it then runs
+playbooks/stacks.yml twice as well (pulls about 4 GB of images). Requires a
+local Docker daemon.
 
 The container differs from MagicBox (architecture, nested Docker, no real LAN),
 so a pass proves the roles converge and are idempotent, not that the LAN setup
@@ -32,6 +34,7 @@ def sh(*cmd: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 def main() -> None:
     keep = "--keep" in sys.argv[1:]
+    with_stacks = "--with-stacks" in sys.argv[1:]
     sh("docker", "build", "-q", "-t", IMAGE, str(ROOT / "tests/container"))
     sh("docker", "rm", "-f", NAME, check=False)
     sh("docker", "volume", "rm", "-f", f"{NAME}-docker", f"{NAME}-containerd", check=False)
@@ -54,6 +57,12 @@ def main() -> None:
             # The controller cannot resolve the container's mDNS name.
             "--skip-tags", "controller-verify",
         )
+        if with_stacks:
+            sh(
+                sys.executable, str(ROOT / "tools/idempotency_check.py"),
+                "-i", str(ROOT / "tests/container/hosts.yml"),
+                str(ROOT / "playbooks/stacks.yml"),
+            )
     finally:
         if not keep:
             sh("docker", "rm", "-f", NAME, check=False)

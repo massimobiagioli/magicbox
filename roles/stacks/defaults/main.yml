@@ -1,0 +1,42 @@
+---
+# Stacks deployed into the Portainer site environment (magicbox_site_name).
+# Removing a name here does NOT delete the stack; delete it in Portainer.
+stacks_enabled:
+  - rabbitmq
+  - postgresql
+  - ollama
+  - observability
+
+# Host directory for configuration files mounted into stack containers.
+stacks_base_dir: /opt/magicbox/stacks
+
+# Images, pinned to exact tags (checked on Docker Hub 2026-10-28).
+stacks_rabbitmq_image: rabbitmq:4.3.7-management
+stacks_postgresql_image: postgres:18.6
+stacks_ollama_image: ollama/ollama:0.40.12
+stacks_grafana_image: grafana/grafana:13.2.5
+stacks_loki_image: grafana/loki:3.7.9
+stacks_alloy_image: grafana/alloy:v1.21.2
+
+# Host ports published to the LAN (filtered by the DOCKER-USER chain).
+stacks_rabbitmq_amqp_port: 5672
+stacks_rabbitmq_management_port: 15672
+stacks_postgresql_port: 5432
+stacks_ollama_port: 11434
+stacks_grafana_port: 3000
+
+# Credentials. Passwords come from the vault and are applied only when the
+# service initialises its data volume for the first time.
+stacks_rabbitmq_user: magicbox
+stacks_rabbitmq_password: "{{ vault_rabbitmq_password | default('') }}"
+stacks_postgresql_user: magicbox
+stacks_postgresql_database: magicbox
+stacks_postgresql_password: "{{ vault_postgresql_password | default('') }}"
+stacks_grafana_admin_password: "{{ vault_grafana_admin_password | default('') }}"
+
+# Ollama models pulled after deployment (e.g. ["llama3.2:3b"]). Pulls can
+# take a long time and several GB of disk; models are never deleted.
+stacks_ollama_models: []
+
+# Loki log retention.
+stacks_loki_retention: 168h

@@ -1,0 +1,70 @@
+// {{ ansible_managed }}
+// Ships Docker container logs and the host systemd journal to Loki.
+
+// Docker json-file logs; the container name comes from the log-opt "tag"
+// set in /etc/docker/daemon.json (attrs.tag).
+local.file_match "docker" {
+  path_targets = [{"__path__" = "/var/lib/docker/containers/*/*-json.log", "job" = "docker", "host" = "{{ magicbox_hostname }}"}]
+}
+
+loki.source.file "docker" {
+  targets    = local.file_match.docker.targets
+  forward_to = [loki.process.docker.receiver]
+}
+
+loki.process "docker" {
+  stage.json {
+    expressions = {
+      output    = "log",
+      stream    = "stream",
+      timestamp = "time",
+      container = "attrs.tag",
+    }
+  }
+
+  stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339Nano"
+  }
+
+  stage.labels {
+    values = {
+      stream    = "",
+      container = "",
+    }
+  }
+
+  stage.output {
+    source = "output"
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+// Host logs from the systemd journal (works with or without rsyslog).
+loki.relabel "journal" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+}
+
+loki.source.journal "host" {
+  path          = "/var/log/journal"
+  relabel_rules = loki.relabel.journal.rules
+  labels        = {"job" = "journal", "host" = "{{ magicbox_hostname }}"}
+  forward_to    = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

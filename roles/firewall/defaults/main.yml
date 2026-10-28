@@ -11,3 +11,8 @@ firewall_lan_udp_ports:
   - 5353  # mDNS (Avahi)
 
 firewall_logging: low
+
+# Filter ports published by Docker containers. Docker's NAT rules bypass the
+# ufw INPUT rules, so a DOCKER-USER chain (loaded by ufw from after.rules)
+# admits new connections from magicbox_lan_cidr only (ADR-0012).
+firewall_docker_user_filter: true

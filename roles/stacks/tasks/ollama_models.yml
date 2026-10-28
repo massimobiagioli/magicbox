@@ -1,0 +1,17 @@
+---
+- name: List installed Ollama models
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ stacks_ollama_port }}/api/tags"
+  register: stacks_ollama_tags
+
+- name: Pull missing Ollama models
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ stacks_ollama_port }}/api/pull"
+    method: POST
+    body_format: json
+    body:
+      model: "{{ item }}"
+      stream: false
+    timeout: 3600
+  loop: "{{ stacks_ollama_models | difference(stacks_ollama_tags.json.models | map(attribute='name') | list) }}"
+  changed_when: true

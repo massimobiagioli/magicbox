@@ -1,0 +1,73 @@
+# {{ ansible_managed }}
+# Observability: Grafana (UI) + Loki (log store) + Alloy (log collector).
+# Only Grafana is published; Loki and Alloy stay on the internal network.
+x-config-revision: &config-revision
+  com.magicbox.config-revision: ${MAGICBOX_CONFIG_REVISION}
+
+services:
+  loki:
+    image: {{ stacks_loki_image }}
+    container_name: loki
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/config.yaml"]
+    labels: *config-revision
+    volumes:
+      - {{ stacks_base_dir }}/observability/loki.yaml:/etc/loki/config.yaml:ro
+      - loki_data:/loki
+    networks: [observability]
+
+  alloy:
+    image: {{ stacks_alloy_image }}
+    container_name: alloy
+    restart: unless-stopped
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    labels: *config-revision
+    # Reads log files directly; no Docker socket access (ADR-0013).
+    volumes:
+      - {{ stacks_base_dir }}/observability/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/log/journal:/var/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      - alloy_data:/var/lib/alloy/data
+    networks: [observability]
+    depends_on: [loki]
+
+  grafana:
+    image: {{ stacks_grafana_image }}
+    container_name: grafana
+    restart: unless-stopped
+    labels: *config-revision
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
+      GF_SERVER_PROTOCOL: https
+      GF_SERVER_DOMAIN: {{ magicbox_hostname }}.local
+      GF_SERVER_ROOT_URL: https://{{ magicbox_hostname }}.local:{{ stacks_grafana_port }}/
+      GF_SERVER_CERT_FILE: /etc/grafana/tls/grafana.crt
+      GF_SERVER_CERT_KEY: /etc/grafana/tls/grafana.key
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports:
+      - "{{ stacks_grafana_port }}:3000"
+    volumes:
+      - {{ stacks_base_dir }}/observability/grafana-datasources:/etc/grafana/provisioning/datasources:ro
+      - {{ stacks_base_dir }}/observability/grafana-tls:/etc/grafana/tls:ro
+      - grafana_data:/var/lib/grafana
+    networks: [observability]
+    depends_on: [loki]
+
+networks:
+  observability:
+    name: observability
+
+volumes:
+  loki_data:
+    name: loki_data
+  alloy_data:
+    name: alloy_data
+  grafana_data:
+    name: grafana_data

@@ -16,12 +16,15 @@ In scope:
 - Host firewall restricting management access to the LAN (`firewall` role).
 - Docker Engine from Docker's official repository (`docker` role).
 - Portainer CE with persistent storage, HTTPS and a bootstrap admin
-  (`portainer` role).
+  (`portainer` role), initialised with the `homelab` site environment
+  (`portainer_init` role).
+- Default Portainer stacks: RabbitMQ, PostgreSQL, Ollama, and Grafana + Loki +
+  Alloy (`stacks` role, `playbooks/stacks.yml`).
 - Controller tooling (uv, `.venv`, Ansible), project tools, tests,
   documentation, ADRs and PDF manuals.
 
-Out of scope (until an ADR says otherwise): the workloads deployed through
-Portainer, router/DNS configuration, remote access from outside the LAN,
+Out of scope (until an ADR says otherwise): workloads other than the default
+stacks, application data inside the default services, router/DNS configuration, remote access from outside the LAN,
 backups of workload data, monitoring, multi-host clusters.
 
 ## Requirements
@@ -44,7 +47,11 @@ backups of workload data, monitoring, multi-host clusters.
 9. Dependencies are pinned: Python packages (`pyproject.toml`, `uv.lock`),
    Ansible collections (`requirements.yml`), Docker major version, Portainer
    image tag.
-10. Everything is written in English: code, comments, docs, manuals, commit
+10. Portainer has an environment named `magicbox_site_name` (default
+    `homelab`) for the local Docker engine; the default stacks run in it with
+    persistent volumes, and their published ports are reachable from the LAN
+    only.
+11. Everything is written in English: code, comments, docs, manuals, commit
     messages.
 
 ## Governance
@@ -89,3 +96,5 @@ The infrastructure is accepted when all of the following hold:
 | 5 | From another LAN computer with the CA trusted, `https://magicbox.local:9443/` loads without a certificate warning and the admin can log in | LAN client |
 | 6 | After `sudo reboot`, criterion 5 holds again without manual action and Portainer settings are preserved | LAN client |
 | 7 | From outside `magicbox_lan_cidr`, ports 22 and 9443 are unreachable; port 9000 is closed everywhere | Network test |
+| 8 | `make stacks` completes, a second run reports `changed=0`, and its `verify` tasks pass (containers healthy, PostgreSQL ready, RabbitMQ and Ollama APIs, Grafana over HTTPS, Loki receives logs) | MagicBox |
+| 9 | Portainer shows the `homelab` environment with the stacks `rabbitmq`, `postgresql`, `ollama`, `observability` | LAN client |

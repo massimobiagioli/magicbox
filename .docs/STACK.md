@@ -41,6 +41,20 @@ Pinned in `requirements.yml`, installed into `.ansible/collections`.
 | Docker Engine (docker-ce, cli, containerd.io, buildx, compose plugins) | 29.x (apt-pinned major) | download.docker.com, key fingerprint verified | Official, current engine (ADR-0002) |
 | Portainer CE | 2.45.3 (LTS) | `portainer/portainer-ce:2.45.3` | Web UI for Docker management; LTS channel for stability |
 
+## Default stacks (playbooks/stacks.yml)
+
+Deployed as Portainer stacks in the `homelab` environment (ADR-0010, ADR-0011).
+Image tags were checked on Docker Hub on 2026-10-28.
+
+| Stack | Image | Port (LAN) | Rationale |
+|-------|-------|------------|-----------|
+| rabbitmq | `rabbitmq:4.3.7-management` | 5672 AMQP, 15672 UI (HTTP) | Current 4.x with management plugin |
+| postgresql | `postgres:18.6` | 5432 | Newest major, supported until 2030-11-14 ("LTS" choice) |
+| ollama | `ollama/ollama:0.40.12` | 11434 (HTTP, no auth) | Local LLM runtime, CPU inference |
+| observability | `grafana/grafana:13.2.5` | 3000 (HTTPS, MagicBox CA) | Dashboards and log exploration |
+| observability | `grafana/loki:3.7.9` | internal only | Log store (filesystem, TSDB v13) |
+| observability | `grafana/alloy:v1.21.2` | internal only | Log collector; replaces Promtail, EOL 2026-03-02 (ADR-0013) |
+
 ## Runtime layout on MagicBox
 
 | Path / object | Purpose |
@@ -52,6 +66,9 @@ Pinned in `requirements.yml`, installed into `.ansible/collections`.
 | `/etc/apt/preferences.d/docker-ce.pref` | Docker major-version pin |
 | `/etc/avahi/avahi-daemon.conf` | mDNS publishing on the LAN interface |
 | `/etc/systemd/resolved.conf.d/magicbox-mdns.conf` | Disables resolved's mDNS/LLMNR |
+| `/etc/ufw/after.rules` (MAGICBOX DOCKER-USER block) | Limits Docker-published ports to the LAN (ADR-0012) |
+| `/opt/magicbox/stacks/observability/` | Loki and Alloy configs, Grafana data source, Grafana TLS copy |
+| Volumes `rabbitmq_data`, `postgresql_data`, `ollama_data`, `loki_data`, `alloy_data`, `grafana_data` | Stack data (persistent) |
 
 ## Network
 
@@ -60,6 +77,10 @@ Pinned in `requirements.yml`, installed into `.ansible/collections`.
 | 22 | TCP | SSH | `magicbox_lan_cidr` |
 | 9443 | TCP | Portainer HTTPS | `magicbox_lan_cidr` |
 | 5353 | UDP | mDNS (Avahi) | `magicbox_lan_cidr` |
+| 3000 | TCP | Grafana HTTPS | `magicbox_lan_cidr` (DOCKER-USER) |
+| 5672, 15672 | TCP | RabbitMQ AMQP, management UI | `magicbox_lan_cidr` (DOCKER-USER) |
+| 5432 | TCP | PostgreSQL | `magicbox_lan_cidr` (DOCKER-USER) |
+| 11434 | TCP | Ollama API | `magicbox_lan_cidr` (DOCKER-USER) |
 | 9000 | TCP | Portainer HTTP | disabled (`--http-disabled`) |
 | 8000 | TCP | Portainer Edge tunnel | blocked (unused) |
 | 2375/2376 | TCP | Docker API | never enabled |

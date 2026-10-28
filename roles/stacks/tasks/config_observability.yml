@@ -1,0 +1,45 @@
+---
+- name: Create observability configuration directories
+  ansible.builtin.file:
+    path: "{{ stacks_base_dir }}/observability/{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "", owner: root, mode: "0755" }
+    - { path: grafana-datasources, owner: root, mode: "0755" }
+    # Grafana runs as UID 472 and must read its TLS key.
+    - { path: grafana-tls, owner: "472", mode: "0700" }
+
+- name: Write observability configuration files
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ stacks_base_dir }}/observability/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - { src: loki.yaml.j2, dest: loki.yaml }
+    - { src: config.alloy.j2, dest: config.alloy }
+    - { src: grafana-datasources.yaml.j2, dest: grafana-datasources/loki.yaml }
+  register: stacks_observability_config
+
+- name: Give Grafana a copy of the MagicBox TLS certificate and key
+  ansible.builtin.copy:
+    src: "{{ magicbox_portainer_ca_cert | dirname }}/{{ item.src }}"
+    dest: "{{ stacks_base_dir }}/observability/grafana-tls/{{ item.dest }}"
+    remote_src: true
+    owner: "472"
+    group: root
+    mode: "0400"
+  loop:
+    - { src: portainer.crt, dest: grafana.crt }
+    - { src: portainer.key, dest: grafana.key }
+  register: stacks_observability_tls
+
+- name: Derive a configuration revision that redeploys containers when files change
+  ansible.builtin.set_fact:
+    stacks_config_revision: >-
+      {{ ((stacks_observability_config.results + stacks_observability_tls.results)
+          | map(attribute='checksum') | join(',')) | hash('sha256') | truncate(16, true, '') }}
