@@ -7,6 +7,9 @@
 # The real vault.yml is git-ignored; never commit a plaintext password.
 vault_portainer_admin_password: ""
 
+# sudo password of ansible_user on MagicBox (used as ansible_become_password).
+vault_become_password: ""
+
 # Default stacks (playbooks/stacks.yml); each at least 12 characters.
 vault_postgresql_password: ""
 vault_rabbitmq_password: ""

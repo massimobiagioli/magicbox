@@ -1,0 +1,21 @@
+---
+# apt upgrade mode: "safe" (apt upgrade: never removes packages) or "full"
+# (apt full-upgrade: may remove packages to resolve dependencies).
+os_update_upgrade: safe
+
+# Remove packages that are no longer needed (apt autoremove).
+os_update_autoremove: true
+
+# Reboot when an update requires it (/var/run/reboot-required). Off by default:
+# a reboot briefly stops Portainer and every stack. Enable with
+# -e os_update_reboot=true.
+os_update_reboot: false
+
+# Seconds to wait for MagicBox to come back after a reboot.
+os_update_reboot_timeout: 900
+
+# Services that must be running after the update. Services not installed yet
+# (e.g. Docker before the first `make deploy`) are skipped.
+os_update_services:
+  - avahi-daemon.service
+  - docker.service

@@ -42,18 +42,20 @@ make setup           # uv sync --locked + pinned Ansible collections
 make check           # syntax, yamllint, ansible-lint, secrets, manuals, docs checks
 make test-container  # converge + idempotency in a disposable systemd container
 make manuals         # build manuals/*.pdf from manuals/src/*.md
-make deploy EXTRA="-K -e magicbox_confirm_destructive=true"   # first deployment
-make deploy EXTRA="-K"                                        # later runs
-make verify EXTRA="-K"
-make stacks EXTRA="-K"                                        # default Portainer stacks
-make test-container ARGS="--with-stacks"                      # includes stacks (~4 GB pulls)
+make deploy EXTRA="-e magicbox_confirm_destructive=true"   # first deployment
+make deploy          # later runs (asks the vault password; sudo password is in the vault)
+make verify
+make stacks          # default Portainer stacks
+make update          # apt update + upgrade (EXTRA="-e os_update_reboot=true" reboots if needed)
+make test-container ARGS="--with-stacks"                   # includes stacks (~4 GB pulls)
 ```
 
 ## Layout
 
 - `playbooks/site.yml` - host + Portainer (roles + controller verification play)
 - `playbooks/stacks.yml` - default Portainer stacks (RabbitMQ, PostgreSQL, Ollama, Grafana/Loki/Alloy)
-- `roles/` - `preflight`, `mdns`, `firewall`, `docker`, `portainer`, `portainer_init`, `stacks`
+- `playbooks/update.yml` - OS package update (apt update + upgrade), optional reboot
+- `roles/` - `preflight`, `mdns`, `firewall`, `docker`, `portainer`, `portainer_init`, `stacks`, `os_update`
 - `inventory/` - `hosts.example.yml`, `vault.example.yml`, `group_vars/magicbox/main.yml`
 - `tests/container/` - Dockerfile and inventory for the container test
 - `tools/` - project tools (below)

@@ -12,7 +12,7 @@ community.general 13.5.0, community.docker 5.4.0, community.crypto 3.5.1.
 
 | Item | Value |
 |------|-------|
-| Playbooks | `playbooks/site.yml` (host + Portainer), `playbooks/stacks.yml` (default stacks) |
+| Playbooks | `playbooks/site.yml` (host + Portainer), `playbooks/stacks.yml` (default stacks), `playbooks/update.yml` (OS packages) |
 | Inventory | `inventory/hosts.yml` (git-ignored; template `inventory/hosts.example.yml`) |
 | Group | `magicbox` |
 | Project policy | `inventory/group_vars/magicbox/main.yml` |
@@ -29,6 +29,9 @@ controller*, queries Portainer from the controller over the LAN.
 Portainer*, that runs the `stacks` role on group `magicbox`. Run it after
 `site.yml`.
 
+`playbooks/update.yml` has one play, *Update MagicBox packages*, that runs the
+`os_update` role. It needs the vault password only for `vault_become_password`.
+
 ## 2. Commands
 
 | Goal | Command |
@@ -36,19 +39,24 @@ Portainer*, that runs the `stacks` role on group `magicbox`. Run it after
 | Create the environment | `make setup` |
 | All local checks | `make check` |
 | Container converge + idempotency test | `make test-container` |
-| First deployment | `make deploy EXTRA="-K -e magicbox_confirm_destructive=true"` |
-| Routine deployment | `make deploy EXTRA="-K"` |
-| Only one area | `uv run ansible-playbook playbooks/site.yml --ask-vault-pass -K --tags docker` |
-| Dry run with diff | `uv run ansible-playbook playbooks/site.yml --ask-vault-pass -K --check --diff` |
-| Verification only | `make verify EXTRA="-K"` |
-| Default stacks | `make stacks EXTRA="-K"` |
-| Selected stacks only | `uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass -K -e '{"stacks_enabled": ["postgresql"]}'` |
-| Stacks: verification only | `uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass -K --tags verify` |
-| Idempotency on MagicBox | `make idempotency VAULT_PASSWORD_FILE=<file> EXTRA="--become-password-file=<file>"` |
+| First deployment | `make deploy EXTRA="-e magicbox_confirm_destructive=true"` |
+| Routine deployment | `make deploy` |
+| Only one area | `uv run ansible-playbook playbooks/site.yml --ask-vault-pass --tags docker` |
+| Dry run with diff | `uv run ansible-playbook playbooks/site.yml --ask-vault-pass --check --diff` |
+| Verification only | `make verify` |
+| Default stacks | `make stacks` |
+| Selected stacks only | `uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass -e '{"stacks_enabled": ["postgresql"]}'` |
+| Stacks: verification only | `uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass --tags verify` |
+| OS package update | `make update` |
+| OS update + reboot if required | `make update EXTRA="-e os_update_reboot=true"` |
+| Idempotency on MagicBox | `make idempotency VAULT_PASSWORD_FILE=<file>` |
 | List tasks / tags | `uv run ansible-playbook playbooks/site.yml --list-tasks` / `--list-tags` |
 
-`-K` asks for the sudo password; omit it if `<admin-user>` has passwordless
-sudo. A `--check` run cannot complete the `docker` and `portainer` roles on a
+`make deploy`, `verify`, `stacks` and `update` ask for the vault password;
+the sudo password is `vault_become_password` (`ansible_become_password` in
+`inventory/hosts.yml`). `BECOME=-K` prompts for it instead.
+
+A `--check` run cannot complete the `docker` and `portainer` roles on a
 fresh host because the packages they verify are not installed yet.
 
 ## 3. Tags
@@ -63,6 +71,7 @@ fresh host because the packages they verify are not installed yet.
 | `portainer` | The `portainer` and `portainer_init` roles, including TLS tasks |
 | `portainer-init` | Only the `portainer_init` role (site environment) |
 | `stacks` | The `stacks` role (in `playbooks/stacks.yml`) |
+| `update` | The `os_update` role (in `playbooks/update.yml`) |
 | `tls` | Only TLS provisioning inside `portainer` (certificate renewal, CA fetch) |
 | `verify` | Verification tasks in all roles plus the controller play; in `stacks.yml`, login, lookups and stack checks |
 | `controller-verify` | Only the controller play; skipped by the container test |
@@ -79,6 +88,9 @@ Defined in `inventory/hosts.yml` (environment facts) or
 |----------|---------|-------------|
 | `magicbox_lan_interface` | required | LAN interface on MagicBox (`ip -br link`). Avahi publishes only here. |
 | `magicbox_lan_cidr` | required | Private IPv4 LAN subnet allowed to reach SSH, Portainer and mDNS. |
+| `ansible_become_password` | `{{ vault_become_password }}` | sudo password of `ansible_user`, set in `inventory/hosts.yml`; remove with passwordless sudo. |
+| `vault_become_password` | required (vault) | sudo password; anyone with the vault password can become root on MagicBox. |
+| `ansible_become_exe` | `sudo` | Ubuntu 26.04: `sudo.ws` (classic sudo; sudo-rs prompts time out, ADR-0002). |
 | `magicbox_hostname` | `magicbox` | Hostname and mDNS name (`<name>.local`); single DNS label. |
 | `magicbox_expected_architecture` | `x86_64` | Asserted CPU architecture. |
 | `magicbox_supported_os` | Ubuntu 24.04/26.04, Debian 12/13 | Asserted OS/version map (ADR-0002). |
@@ -112,7 +124,7 @@ Python 3 on the host (present on Ubuntu/Debian server installs).
 
 **Risks.** Changing `magicbox_hostname` renames the host and the mDNS name;
 certificates must match (`portainer_tls_dns_names` follows automatically, the
-existing CA's name constraints do not: rotate the CA, installation guide 8.5).
+existing CA's name constraints do not: rotate the CA, installation guide 8.6).
 
 ## 6. Role `mdns`
 
@@ -164,7 +176,7 @@ the interface DROP rule. `sudo ufw status verbose` (manual); the controller
 play proves 9443 is reachable from the LAN.
 
 **Risks.** A wrong `magicbox_lan_cidr` can lock out SSH from other subnets
-(console recovery: installation guide 8.2). Rules for ports no longer listed
+(console recovery: installation guide 8.3). Rules for ports no longer listed
 are not removed automatically; delete them with `sudo ufw delete <n>`. Ports
 published by containers bypass ufw's INPUT rules; the DOCKER-USER block
 restricts them to `magicbox_lan_cidr` instead. Setting
@@ -346,7 +358,32 @@ Grafana works.
   renewal by `site.yml`, run `stacks.yml` to refresh the copy.
 - First deployment downloads about 4 GB (Ollama is about 3.4 GB).
 
-## 12. Testing the recipes
+## 12. Role `os_update` (playbooks/update.yml)
+
+**Purpose.** Keep the OS current: `apt update`, `apt upgrade` and
+`apt autoremove`. Docker CE updates stay within `docker_major_version` (apt
+pin); `live-restore` keeps containers running while dockerd restarts.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `os_update_upgrade` | `safe` | `safe` (apt upgrade, never removes packages) or `full` (apt full-upgrade). |
+| `os_update_autoremove` | `true` | Remove packages that are no longer needed. |
+| `os_update_reboot` | `false` | Reboot when `/var/run/reboot-required` exists. |
+| `os_update_reboot_timeout` | `900` | Seconds to wait for MagicBox to return after the reboot. |
+| `os_update_services` | avahi-daemon, docker | Must be running after the update; units not installed yet are skipped. |
+
+**Verification.** Every installed unit in `os_update_services` is running
+after the update (and after the reboot, if any). Before the first
+`make deploy`, Docker is not installed and is skipped.
+
+**Risks.**
+
+- A reboot stops Portainer and every stack for a few minutes; they restart
+  automatically. Hence `os_update_reboot` is off by default and the play only
+  reports a pending reboot.
+- `full` may remove packages; review `apt list --upgradable` on MagicBox first.
+
+## 13. Testing the recipes
 
 | Check | Command | Proves |
 |-------|---------|--------|
@@ -363,7 +400,7 @@ The container test overrides `magicbox_expected_architecture`,
 `preflight_manage_hostname: false`; it cannot prove LAN mDNS or reachability
 from other machines.
 
-## 13. Changing the recipes
+## 14. Changing the recipes
 
 1. Edit the role; keep variables prefixed and documented in
    `defaults/main.yml`.

@@ -10,8 +10,8 @@ PostgreSQL, Ollama, and Grafana + Loki + Alloy.
 make setup && make check
 cp inventory/hosts.example.yml inventory/hosts.yml   # fill in your values
 uv run ansible-vault create inventory/group_vars/magicbox/vault.yml
-make deploy EXTRA="-K -e magicbox_confirm_destructive=true"
-make stacks EXTRA="-K"
+make deploy EXTRA="-e magicbox_confirm_destructive=true"
+make stacks
 ```
 
 ## Docs

@@ -3,9 +3,12 @@ UV ?= uv
 RUN := $(UV) run
 COLLECTIONS := .ansible/collections
 LINT_INVENTORY := inventory/hosts.example.yml
+# The sudo password comes from the vault (vault_become_password); BECOME=-K
+# prompts for it instead.
+BECOME ?=
 
 .PHONY: help setup lint syntax docs-check secrets-check manuals manuals-check check \
-        test-container deploy verify idempotency stacks
+        test-container deploy verify idempotency stacks update
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-16s %s\n", $$1, $$2}'
@@ -15,7 +18,7 @@ setup: ## Create .venv from uv.lock and install pinned Ansible collections
 	$(RUN) ansible-galaxy collection install -r requirements.yml -p $(COLLECTIONS)
 
 syntax: ## Ansible syntax check
-	$(RUN) ansible-playbook -i $(LINT_INVENTORY) playbooks/site.yml playbooks/stacks.yml --syntax-check
+	$(RUN) ansible-playbook -i $(LINT_INVENTORY) playbooks/site.yml playbooks/stacks.yml playbooks/update.yml --syntax-check
 
 lint: syntax ## yamllint + ansible-lint (production profile)
 	$(RUN) yamllint .
@@ -39,13 +42,16 @@ test-container: ## Converge + idempotency test in a disposable systemd container
 	$(RUN) tools/container_test.py $(ARGS)
 
 deploy: ## Apply the playbook to MagicBox (pass EXTRA="-e magicbox_confirm_destructive=true" on first run)
-	$(RUN) ansible-playbook playbooks/site.yml --ask-vault-pass $(EXTRA)
+	$(RUN) ansible-playbook playbooks/site.yml --ask-vault-pass $(BECOME) $(EXTRA)
 
-verify: ## Run only verify-tagged tasks against MagicBox (EXTRA="-K" for a sudo password)
-	$(RUN) ansible-playbook playbooks/site.yml --ask-vault-pass --tags verify $(EXTRA)
+verify: ## Run only verify-tagged tasks against MagicBox
+	$(RUN) ansible-playbook playbooks/site.yml --ask-vault-pass --tags verify $(BECOME) $(EXTRA)
 
 idempotency: ## Run twice against MagicBox; second run must change nothing (needs VAULT_PASSWORD_FILE)
 	$(RUN) tools/idempotency_check.py playbooks/site.yml --vault-password-file $(VAULT_PASSWORD_FILE) $(EXTRA)
 
 stacks: ## Deploy the default Portainer stacks to MagicBox (run deploy first)
-	$(RUN) ansible-playbook playbooks/stacks.yml --ask-vault-pass $(EXTRA)
+	$(RUN) ansible-playbook playbooks/stacks.yml --ask-vault-pass $(BECOME) $(EXTRA)
+
+update: ## apt update + upgrade on MagicBox (EXTRA="-e os_update_reboot=true" to reboot if needed)
+	$(RUN) ansible-playbook playbooks/update.yml --ask-vault-pass $(BECOME) $(EXTRA)

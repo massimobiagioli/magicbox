@@ -1,0 +1,10 @@
+---
+# Update MagicBox OS packages (apt update + apt upgrade + autoremove).
+# Reports a pending reboot; reboots only with -e os_update_reboot=true.
+# Run: make update
+- name: Update MagicBox packages
+  hosts: magicbox
+  become: true
+  roles:
+    - role: os_update
+      tags: [update]

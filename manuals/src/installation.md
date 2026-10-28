@@ -100,6 +100,7 @@ magicbox$ sudo sshd -t && sudo systemctl reload ssh
 | `ansible_host` | always `magicbox.local` | magicbox.local |
 | `ansible_user` | admin user | ______________ |
 | `ansible_ssh_private_key_file` | key from 1.6 | ~/.ssh/magicbox/id_ed25519 |
+| `ansible_become_exe` | Ubuntu 26.04 only | sudo.ws |
 | `magicbox_lan_interface` | `ip -br link` | ______________ |
 | `magicbox_lan_cidr` | LAN subnet, e.g. 192.168.1.0/24 | ______________ |
 
@@ -122,8 +123,10 @@ controller$ uv run ansible-vault create inventory/group_vars/magicbox/vault.yml
 - [ ] In `inventory/hosts.yml`: set `ansible_user`, `magicbox_lan_interface`,
       `magicbox_lan_cidr` (1.7). Keep `ansible_host: magicbox.local` and
       `ansible_ssh_private_key_file: ~/.ssh/magicbox/id_ed25519`.
-- [ ] In `vault.yml`, four different passwords of 12+ characters (see
-      `inventory/vault.example.yml`): `vault_portainer_admin_password`,
+- [ ] Ubuntu 26.04: uncomment `ansible_become_exe: sudo.ws`.
+- [ ] In `vault.yml` (see `inventory/vault.example.yml`):
+      `vault_become_password` (sudo password of `ansible_user`) and four
+      different passwords of 12+ characters: `vault_portainer_admin_password`,
       `vault_postgresql_password`, `vault_rabbitmq_password`,
       `vault_grafana_admin_password`. Keep the vault password in your password
       manager.
@@ -136,11 +139,12 @@ controller$ uv run ansible magicbox -m ansible.builtin.ping    # expect "pong"
 ## 4. Deployment
 
 ```text
-controller$ make deploy EXTRA="-K -e magicbox_confirm_destructive=true"   # first run
-controller$ make deploy EXTRA="-K"                                        # later runs
+controller$ make deploy EXTRA="-e magicbox_confirm_destructive=true"   # first run
+controller$ make deploy                                                # later runs
 ```
 
-`-K` asks for the sudo password. The first run needs the confirmation flag
+`make` asks only for the vault password; the sudo password comes from
+`vault_become_password`. The first run needs the confirmation flag
 because it enables the firewall. The CA certificate is saved to
 `artifacts/magicbox-local-ca.crt`. Portainer is initialised with the
 `homelab` environment.
@@ -148,20 +152,20 @@ because it enables the firewall. The CA certificate is saved to
 Then deploy the default stacks (the first run pulls about 4 GB of images):
 
 ```text
-controller$ make stacks EXTRA="-K"
+controller$ make stacks
 ```
 
 Deploy only some stacks:
 
 ```text
-controller$ uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass -K -e '{"stacks_enabled": ["postgresql"]}'
+controller$ uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass -e '{"stacks_enabled": ["postgresql"]}'
 ```
 
 ## 5. Verification
 
 ```text
-controller$ make verify EXTRA="-K"
-controller$ make idempotency VAULT_PASSWORD_FILE=<file> EXTRA="--become-password-file=<file>"
+controller$ make verify
+controller$ make idempotency VAULT_PASSWORD_FILE=<file>
 ```
 
 - [ ] `make verify` passes.
@@ -174,7 +178,7 @@ controller$ make idempotency VAULT_PASSWORD_FILE=<file> EXTRA="--become-password
 - [ ] `magicbox$ sudo ss -ltn | grep -E ':(9000|2375|2376) '` prints nothing.
 - [ ] Portainer > Environments shows `homelab`; Stacks shows `rabbitmq`,
       `postgresql`, `ollama`, `observability`.
-- [ ] A second `make stacks EXTRA="-K"` reports `changed=0`.
+- [ ] A second `make stacks` reports `changed=0`.
 
 Services (from the LAN):
 
@@ -224,6 +228,7 @@ renewed automatically by any playbook run within 30 days of expiry.
 
 | Symptom | Fix |
 |---------|-----|
+| "Timeout waiting privilege escalation prompt" | Ubuntu 26.04 (sudo-rs): set `ansible_become_exe: sudo.ws` |
 | "Unsupported OS" | Install Ubuntu Server 24.04 LTS |
 | `magicbox_lan_interface` assertion | Use a name listed in the error |
 | Admin password assertion | Create `vault.yml`; run with `--ask-vault-pass` |
@@ -236,7 +241,7 @@ renewed automatically by any playbook run within 30 days of expiry.
 | Name became `magicbox-2.local` | Rename the other `magicbox` device; restart avahi-daemon |
 | Certificate warning | Install the CA (section 6); restart the browser |
 | Connection refused | `sudo docker ps -a`; `sudo docker logs portainer`; `sudo ufw status` |
-| Vault password rejected at login | Portainer was already initialised: reset (8.3) |
+| Vault password rejected at login | Portainer was already initialised: reset (8.4) |
 | `stacks`: "Portainer rejected the vault password" | Password changed in the UI: update `vault_portainer_admin_password` |
 | `stacks`: environment not found | Run `make deploy` first |
 | `stacks`: wait for containers times out | Slow image pull: re-run `make stacks`; check `sudo docker ps -a` |
@@ -247,15 +252,24 @@ renewed automatically by any playbook run within 30 days of expiry.
 ### 8.1 Repair drift
 
 ```text
-controller$ make deploy EXTRA="-K"
+controller$ make deploy
 ```
 
-### 8.2 Firewall lockout
+### 8.2 Update packages
+
+```text
+controller$ make update
+controller$ make update EXTRA="-e os_update_reboot=true"   # if a reboot is reported
+```
+
+- [ ] Run monthly. The reboot stops Portainer and the stacks for a few minutes.
+
+### 8.3 Firewall lockout
 
 At the console: `sudo ufw disable`, fix `magicbox_lan_cidr` (IPv4 subnet), then redeploy
 with `-e magicbox_confirm_destructive=true`.
 
-### 8.3 Lost admin password
+### 8.4 Lost admin password
 
 ```text
 magicbox$ sudo docker stop portainer
@@ -263,7 +277,7 @@ magicbox$ sudo docker run --rm -v portainer_data:/data portainer/helper-reset-pa
 magicbox$ sudo docker start portainer
 ```
 
-### 8.4 Backup and restore
+### 8.5 Backup and restore
 
 ```text
 magicbox$ sudo docker stop portainer
@@ -284,7 +298,7 @@ The archive contains the CA key: store it encrypted, off the box. To restore,
 reinstall (sections 1-4), stop Portainer, run `sudo tar -C / -xzf <archive>`,
 and start Portainer.
 
-### 8.5 Rotate the CA
+### 8.6 Rotate the CA
 
 Delete `/opt/magicbox/portainer/certs/` on MagicBox, run `make deploy`, and
 install the new CA on every client. Remove the old CA from the clients.

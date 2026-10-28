@@ -1,0 +1,53 @@
+---
+- name: Assert a Debian-family OS
+  ansible.builtin.assert:
+    that: ansible_facts.os_family == 'Debian'
+    fail_msg: "os_update supports only Debian/Ubuntu (found {{ ansible_facts.distribution }})."
+    quiet: true
+
+- name: Assert a valid upgrade mode
+  ansible.builtin.assert:
+    that: os_update_upgrade in ['safe', 'full']
+    fail_msg: "os_update_upgrade must be 'safe' or 'full' (got '{{ os_update_upgrade }}')."
+    quiet: true
+
+- name: Update the package index and upgrade packages
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: "{{ os_update_upgrade }}"
+    autoremove: "{{ os_update_autoremove }}"
+  register: os_update_result
+
+- name: Check whether a reboot is required
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: os_update_reboot_flag
+
+- name: Report a pending reboot
+  ansible.builtin.debug:
+    msg: >-
+      A reboot is required to finish the update. Run
+      make update EXTRA="-e os_update_reboot=true" when a short downtime is acceptable.
+  when:
+    - os_update_reboot_flag.stat.exists
+    - not os_update_reboot | bool
+
+- name: Reboot MagicBox
+  ansible.builtin.reboot:
+    msg: Reboot after package update (playbooks/update.yml)
+    reboot_timeout: "{{ os_update_reboot_timeout }}"
+  when:
+    - os_update_reboot_flag.stat.exists
+    - os_update_reboot | bool
+
+- name: Collect service states
+  ansible.builtin.service_facts:
+  tags: [verify]
+
+- name: Verify installed MagicBox services are running
+  ansible.builtin.assert:
+    that: ansible_facts.services[item].state == 'running'
+    fail_msg: "{{ item }} is not running after the update: check systemctl status {{ item }}."
+    quiet: true
+  loop: "{{ os_update_services | select('in', ansible_facts.services) | list }}"
+  tags: [verify]
