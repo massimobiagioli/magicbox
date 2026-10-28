@@ -12,7 +12,9 @@ computers at **https://magicbox.local:9443/**.
   [`tools/`](tools/), run it with `uv run tools/<name>`, and add it to the
   "Tools" list below. Do not rely on unrecorded one-off commands or
   system-installed converters.
-- Never invent environment details (IPs, users, interfaces, subnets, OS) or
+- MagicBox has no fixed IP: always address it as `magicbox.local` (SSH,
+  inventory, docs, clients). Avahi provides the name (ADR-0003).
+- Never invent environment details (users, interfaces, subnets, OS) or
   credentials. Ask, or fail with a clear message. Real values live only in the
   git-ignored `inventory/hosts.yml` and the vault-encrypted
   `inventory/group_vars/magicbox/vault.yml`.

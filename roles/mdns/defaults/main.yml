@@ -1,7 +1,7 @@
 ---
-# Publish AAAA records too. Disable if IPv6 on the LAN causes clients to
-# prefer unreachable addresses.
-mdns_use_ipv6: true
+# Publish only A records. The firewall allows the IPv4 magicbox_lan_cidr, so
+# an AAAA record would make clients (and SSH) try an address that is blocked.
+mdns_use_ipv6: false
 
 mdns_packages:
   - avahi-daemon

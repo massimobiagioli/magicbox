@@ -22,7 +22,7 @@ portainer_tls_mode: local_ca
 portainer_tls_dns_names:
   - "{{ magicbox_hostname }}.local"
   - "{{ magicbox_hostname }}"
-# Optional extra IP SANs (e.g. the DHCP-reserved address). Empty by default.
+# Optional IP SANs. Leave empty: MagicBox is reached by name and its IP is dynamic.
 portainer_tls_ip_addresses: []
 portainer_tls_ca_common_name: "MagicBox Local CA ({{ magicbox_hostname }})"
 portainer_tls_ca_valid_for: +3650d

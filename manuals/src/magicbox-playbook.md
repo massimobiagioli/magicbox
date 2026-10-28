@@ -69,7 +69,7 @@ Defined in `inventory/hosts.yml` (environment facts) or
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `magicbox_lan_interface` | required | LAN interface on MagicBox (`ip -br link`). Avahi publishes only here. |
-| `magicbox_lan_cidr` | required | Private LAN subnet allowed to reach SSH, Portainer and mDNS. |
+| `magicbox_lan_cidr` | required | Private IPv4 LAN subnet allowed to reach SSH, Portainer and mDNS. |
 | `magicbox_hostname` | `magicbox` | Hostname and mDNS name (`<name>.local`); single DNS label. |
 | `magicbox_expected_architecture` | `x86_64` | Asserted CPU architecture. |
 | `magicbox_supported_os` | Ubuntu 24.04/26.04, Debian 12/13 | Asserted OS/version map (ADR-0002). |
@@ -83,8 +83,9 @@ Defined in `inventory/hosts.yml` (environment facts) or
 baseline: OS/architecture/inventory/vault assertions, LAN CIDR validation,
 detection of where the SSH controller connects from, hostname, base packages.
 
-**Prerequisites.** SSH key login as a sudo-capable user; Python 3 on the host
-(present on Ubuntu/Debian server installs).
+**Prerequisites.** `magicbox.local` resolves from the controller (Avahi
+installed during the manual steps); SSH key login as a sudo-capable user;
+Python 3 on the host (present on Ubuntu/Debian server installs).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -102,7 +103,10 @@ existing CA's name constraints do not: rotate the CA, installation guide 8.5).
 
 ## 6. Role `mdns`
 
-**Purpose.** Publish `magicbox.local` on the LAN with Avahi (ADR-0003).
+**Purpose.** Publish `magicbox.local` on the LAN with Avahi (ADR-0003). MagicBox
+has no fixed IP: Avahi re-announces the name whenever DHCP changes the
+address. Avahi is first installed by hand (installation guide 1.5) so Ansible
+can connect by name; this role then owns its configuration.
 Installs `mdns_packages`, disables systemd-resolved's mDNS/LLMNR responders
 when systemd-resolved is installed, templates `/etc/avahi/avahi-daemon.conf`
 (host name, `allow-interfaces`, no HINFO/workstation publishing, no reflector,
@@ -110,7 +114,7 @@ no wide-area), and enables `avahi-daemon`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `mdns_use_ipv6` | `true` | Publish AAAA records. Set `false` if clients pick unreachable IPv6 addresses. |
+| `mdns_use_ipv6` | `false` | Publish AAAA records. Off because the firewall only allows the IPv4 LAN. |
 | `mdns_packages` | avahi-daemon, avahi-utils, libnss-mdns | Responder, CLI tools, NSS module for local resolution. |
 
 **Handlers.** *Restart systemd-resolved*, *Restart avahi-daemon*.
@@ -198,7 +202,7 @@ the certificate directory (read-only) and the password file (read-only).
 | `portainer_secret_dir` | `<base>/secrets` | Admin password file (0700). |
 | `portainer_tls_mode` | `local_ca` | `local_ca` or `provided`. |
 | `portainer_tls_dns_names` | `magicbox.local`, `magicbox` | Certificate SANs and CA name constraints. |
-| `portainer_tls_ip_addresses` | `[]` | Optional IP SANs/constraints (e.g. the reserved IP). |
+| `portainer_tls_ip_addresses` | `[]` | Optional IP SANs/constraints. Keep empty: the IP is dynamic (DHCP). |
 | `portainer_tls_ca_common_name` | `MagicBox Local CA (magicbox)` | CA subject CN. |
 | `portainer_tls_ca_valid_for` | `+3650d` | CA lifetime. |
 | `portainer_tls_cert_valid_for` | `+397d` | Server certificate lifetime. |

@@ -6,10 +6,10 @@ all:
     magicbox:
       hosts:
         magicbox-node:
-          # REQUIRED: address used by Ansible to reach MagicBox over SSH.
-          # Prefer the DHCP-reserved IPv4 address; magicbox.local only works
-          # after the mdns role has run once.
-          ansible_host: 192.0.2.10
+          # MagicBox is always addressed by its mDNS name; the IP is dynamic
+          # (DHCP). Avahi is installed during the manual steps so this name
+          # resolves before the first playbook run.
+          ansible_host: magicbox.local
           # REQUIRED: the sudo-capable admin account created during OS install.
           ansible_user: CHANGE_ME
           # Optional: private key used for SSH (key-based auth is required).
@@ -17,5 +17,6 @@ all:
       vars:
         # REQUIRED: the LAN interface name on MagicBox (`ip -br link`).
         magicbox_lan_interface: CHANGE_ME
-        # REQUIRED: the LAN subnet allowed to reach SSH and Portainer.
-        magicbox_lan_cidr: 192.0.2.0/24
+        # REQUIRED: the IPv4 LAN subnet allowed to reach SSH and Portainer
+        # (e.g. 192.168.1.0/24). It is the subnet, not MagicBox's address.
+        magicbox_lan_cidr: CHANGE_ME

@@ -67,8 +67,10 @@ backups of workload data, monitoring, multi-host clusters.
 - Hardware: one GMKtec Intel Mini PC, `x86_64`.
 - OS: Ubuntu Server 24.04/26.04 LTS or Debian 12/13 (ADR-0002). The concrete
   OS on MagicBox must be confirmed by the owner before the first deployment.
+- Addressing: MagicBox has a dynamic (DHCP) IP and is always addressed as
+  `magicbox.local`, including by Ansible and SSH (ADR-0003). No fixed IP.
 - Access: SSH with key authentication from a controller inside the LAN, as a
-  sudo-capable user. Environment facts (IP, user, interface, subnet) are never
+  sudo-capable user. Environment facts (user, interface, subnet) are never
   guessed; they are provided in the git-ignored `inventory/hosts.yml`.
 - `.local` names cannot get public certificates; trust relies on the local CA
   (ADR-0005).

@@ -1,6 +1,8 @@
 # MagicBox Installation Guide
 
 Goal: Portainer reachable from the LAN at **https://magicbox.local:9443/**.
+MagicBox has no fixed IP: it is always reached as `magicbox.local` (mDNS via
+Avahi).
 `magicbox$` = on the Mini PC, `controller$` = on your workstation in this
 repository. Replace `<...>` with your values.
 
@@ -27,7 +29,7 @@ Setup key is usually `Del`, boot menu `F7` (check the boot screen).
 
 - [ ] Download the ISO from `https://ubuntu.com/download/server`, verify its
       SHA-256, write it to the USB stick, boot from it.
-- [ ] Network: wired, DHCP.
+- [ ] Network: wired, DHCP (no static IP).
 - [ ] Storage: entire internal disk, **no** passphrase encryption (it blocks
       unattended reboots).
 - [ ] Server name: **`magicbox`**. Create your admin user (`<admin-user>`).
@@ -38,23 +40,30 @@ Setup key is usually `Del`, boot menu `F7` (check the boot screen).
 
 ```text
 magicbox$ sudo apt update && sudo apt full-upgrade -y && sudo reboot
+magicbox$ hostname                          # must print magicbox
 magicbox$ cat /etc/os-release; uname -m     # supported OS, x86_64
 magicbox$ ip -br link                       # LAN interface name
-magicbox$ ip -br -4 addr; ip route          # address, subnet
-magicbox$ ip link show <iface>              # MAC address
+magicbox$ ip -br -4 addr                    # LAN subnet (e.g. 192.168.1.x/24)
 ```
 
-### 1.5 Stable address
+### 1.5 Avahi (magicbox.local)
 
-- [ ] Router: DHCP reservation for the MAC address.
-- [ ] `sudo reboot`, then `ip -br -4 addr` shows the reserved address.
+```text
+magicbox$ sudo apt install -y avahi-daemon libnss-mdns
+magicbox$ sudo systemctl enable --now avahi-daemon
+magicbox$ avahi-resolve-host-name -4 magicbox.local
+```
+
+- [ ] The last command prints `magicbox.local` and an IPv4 address.
+- [ ] From the controller: `ping -c 3 magicbox.local` answers.
+      (Linux controller: `sudo apt install avahi-daemon libnss-mdns` first.)
 
 ### 1.6 SSH key
 
 ```text
 controller$ ssh-keygen -t ed25519            # skip if you have a key
-controller$ ssh-copy-id <admin-user>@<reserved-ip>
-controller$ ssh <admin-user>@<reserved-ip> 'sudo -v && echo sudo-ok'
+controller$ ssh-copy-id <admin-user>@magicbox.local
+controller$ ssh <admin-user>@magicbox.local 'sudo -v && echo sudo-ok'
 ```
 
 - [ ] Last command prints `sudo-ok`.
@@ -69,7 +78,7 @@ magicbox$ sudo sshd -t && sudo systemctl reload ssh
 
 | Value | Source | Yours |
 |-------|--------|-------|
-| `ansible_host` | reserved IP | ______________ |
+| `ansible_host` | always `magicbox.local` | magicbox.local |
 | `ansible_user` | admin user | ______________ |
 | `magicbox_lan_interface` | `ip -br link` | ______________ |
 | `magicbox_lan_cidr` | LAN subnet, e.g. 192.168.1.0/24 | ______________ |
@@ -90,7 +99,8 @@ controller$ cp inventory/hosts.example.yml inventory/hosts.yml
 controller$ uv run ansible-vault create inventory/group_vars/magicbox/vault.yml
 ```
 
-- [ ] In `inventory/hosts.yml`: fill in the four values from 1.7.
+- [ ] In `inventory/hosts.yml`: set `ansible_user`, `magicbox_lan_interface`,
+      `magicbox_lan_cidr` (1.7). Keep `ansible_host: magicbox.local`.
 - [ ] In `vault.yml`: `vault_portainer_admin_password: "<12+ chars>"`.
       Keep the vault password in your password manager.
 
@@ -153,10 +163,10 @@ renewed automatically by any playbook run within 30 days of expiry.
 
 ### 6.1 If a client cannot resolve magicbox.local
 
-mDNS works on macOS, iOS, Windows 10/11 and Linux with `libnss-mdns`. It does
-not work across subnets or VLANs, or over VPN. Fallback: add
-`<reserved-ip> magicbox.local` to the client's hosts file (`/etc/hosts` or
-`C:\Windows\System32\drivers\etc\hosts`) or to the router's local DNS.
+- [ ] Client on the same LAN subnet (not guest Wi-Fi, not VPN, not another VLAN).
+- [ ] macOS, iOS, Windows 10/11: built in. Android 12+: most browsers.
+- [ ] Linux: `sudo apt install avahi-daemon libnss-mdns`.
+- [ ] On MagicBox: `systemctl status avahi-daemon` is active.
 
 ## 7. Troubleshooting
 
@@ -185,7 +195,7 @@ controller$ make deploy EXTRA="-K"
 
 ### 8.2 Firewall lockout
 
-At the console: `sudo ufw disable`, fix `magicbox_lan_cidr`, then redeploy
+At the console: `sudo ufw disable`, fix `magicbox_lan_cidr` (IPv4 subnet), then redeploy
 with `-e magicbox_confirm_destructive=true`.
 
 ### 8.3 Lost admin password

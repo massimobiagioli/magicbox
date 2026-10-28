@@ -36,7 +36,7 @@ Pinned in `requirements.yml`, installed into `.ansible/collections`.
 | OS | Ubuntu Server 24.04/26.04 LTS or Debian 12/13 (Ubuntu 24.04 recommended) | OS installer | Docker CE support, LTS lifecycle (ADR-0002) |
 | Python 3 | distribution default (3.11-3.14) | OS | Required by Ansible modules |
 | python3-requests, python3-cryptography, python3-debian | distribution | apt | Needed by community.docker, community.crypto and `deb822_repository` |
-| Avahi (avahi-daemon, avahi-utils, libnss-mdns) | distribution | apt | mDNS responder for `magicbox.local` (ADR-0003) |
+| Avahi (avahi-daemon, avahi-utils, libnss-mdns) | distribution | apt (avahi-daemon first installed by hand) | mDNS responder for `magicbox.local`; MagicBox has a dynamic IP (ADR-0003) |
 | ufw | distribution | apt | Host firewall (ADR-0004) |
 | Docker Engine (docker-ce, cli, containerd.io, buildx, compose plugins) | 29.x (apt-pinned major) | download.docker.com, key fingerprint verified | Official, current engine (ADR-0002) |
 | Portainer CE | 2.45.3 (LTS) | `portainer/portainer-ce:2.45.3` | Web UI for Docker management; LTS channel for stability |

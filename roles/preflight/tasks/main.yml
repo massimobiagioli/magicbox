@@ -50,8 +50,8 @@
       - |
         import ipaddress, os, sys
         net = ipaddress.ip_network(sys.argv[1], strict=False)
-        if not net.is_private:
-            sys.exit("magicbox_lan_cidr must be a private network")
+        if net.version != 4 or not net.is_private:
+            sys.exit("magicbox_lan_cidr must be a private IPv4 network")
         client = os.environ.get("SSH_CLIENT", "").split()
         if not client:
             print("unknown")
