@@ -13,7 +13,8 @@ repository. Replace `<...>` with your values.
 ### 1.1 Before you start
 
 - [ ] Back up anything on the internal disk (the OS install erases it).
-- [ ] Have: USB stick (4 GB+), Ethernet cable to the LAN, router admin access.
+- [ ] Have: USB stick (4 GB+), Ethernet cable to the LAN (recommended) or the
+      Wi-Fi name and password, router admin access.
 - [ ] Controller and Mini PC on the same subnet (not guest Wi-Fi).
 
 ### 1.2 Firmware (UEFI)
@@ -31,12 +32,25 @@ Setup key is usually `Del`, boot menu `F7` (check the boot screen).
 
 - [ ] Download the ISO from `https://ubuntu.com/download/server`, verify its
       SHA-256, write it to the USB stick, boot from it.
-- [ ] Network: wired, DHCP (no static IP).
+- [ ] Network: wired or Wi-Fi, DHCP (no static IP). Skipped Wi-Fi: see 1.3.1.
 - [ ] Storage: entire internal disk, **no** passphrase encryption (it blocks
       unattended reboots).
 - [ ] Server name: **`magicbox`**. Create your admin user (`<admin-user>`).
 - [ ] Tick **Install OpenSSH server**. Featured snaps: **none**.
 - [ ] Reboot, remove the USB stick, log in.
+
+### 1.3.1 Wi-Fi (only if skipped during install)
+
+Replace the three `<...>` values (`ip -br link` shows the Wi-Fi interface,
+usually starting with `wl`) and run:
+
+```text
+magicbox$ sudo netplan set --origin-hint 60-wifi 'wifis.<wifi-interface>={dhcp4: true, access-points: {"<wifi-name>": {password: "<wifi-password>"}}}'
+magicbox$ sudo netplan apply
+```
+
+The first command writes `/etc/netplan/60-wifi.yaml` (readable by root only).
+If the name or password contains `'`, `"` or `\`, edit that file instead.
 
 ### 1.4 Update and collect facts
 
@@ -213,6 +227,7 @@ renewed automatically by any playbook run within 30 days of expiry.
 | Conflicting Docker packages | Check nothing uses them, then add the confirmation flag |
 | Docker key fingerprint mismatch | Stop and verify Docker's key out of band |
 | `magicbox.local` not resolving | `systemctl status avahi-daemon`; see 6.1 |
+| No network over Wi-Fi | Check name/password in `/etc/netplan/60-wifi.yaml`; `sudo netplan --debug apply` |
 | Name became `magicbox-2.local` | Rename the other `magicbox` device; restart avahi-daemon |
 | Certificate warning | Install the CA (section 6); restart the browser |
 | Connection refused | `sudo docker ps -a`; `sudo docker logs portainer`; `sudo ufw status` |
