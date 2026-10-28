@@ -13,6 +13,7 @@ __pycache__/
 
 # Environment-specific and secret files (never commit)
 inventory/hosts.yml
+inventory/vault.yml
 inventory/host_vars/
 inventory/group_vars/magicbox/vault.yml
 .vault_pass*

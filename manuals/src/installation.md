@@ -65,7 +65,7 @@ magicbox$ ip -br -4 addr                    # LAN subnet (e.g. 192.168.1.x/24)
 ### 1.5 Avahi (magicbox.local)
 
 ```text
-magicbox$ sudo apt install -y avahi-daemon libnss-mdns
+magicbox$ sudo apt install -y avahi-daemon avahi-utils libnss-mdns
 magicbox$ sudo systemctl enable --now avahi-daemon
 magicbox$ avahi-resolve-host-name -4 magicbox.local
 ```
@@ -77,11 +77,14 @@ magicbox$ avahi-resolve-host-name -4 magicbox.local
 ### 1.6 SSH key
 
 ```text
-controller$ ssh-keygen -t ed25519            # skip if you have a key
-controller$ ssh-copy-id <admin-user>@magicbox.local
-controller$ ssh <admin-user>@magicbox.local 'sudo -v && echo sudo-ok'
+controller$ mkdir -m 700 -p ~/.ssh/magicbox
+controller$ ssh-keygen -t ed25519 -f ~/.ssh/magicbox/id_ed25519 -C magicbox
+controller$ ssh-copy-id -i ~/.ssh/magicbox/id_ed25519.pub <admin-user>@magicbox.local
+controller$ ssh -i ~/.ssh/magicbox/id_ed25519 <admin-user>@magicbox.local 'sudo -v && echo sudo-ok'
 ```
 
+- [ ] Dedicated key for MagicBox: private `~/.ssh/magicbox/id_ed25519` (never
+      share it), public `~/.ssh/magicbox/id_ed25519.pub`.
 - [ ] Last command prints `sudo-ok`.
 - [ ] Optional, after key login works (keep a session open while testing):
 
@@ -96,6 +99,7 @@ magicbox$ sudo sshd -t && sudo systemctl reload ssh
 |-------|--------|-------|
 | `ansible_host` | always `magicbox.local` | magicbox.local |
 | `ansible_user` | admin user | ______________ |
+| `ansible_ssh_private_key_file` | key from 1.6 | ~/.ssh/magicbox/id_ed25519 |
 | `magicbox_lan_interface` | `ip -br link` | ______________ |
 | `magicbox_lan_cidr` | LAN subnet, e.g. 192.168.1.0/24 | ______________ |
 
@@ -116,7 +120,8 @@ controller$ uv run ansible-vault create inventory/group_vars/magicbox/vault.yml
 ```
 
 - [ ] In `inventory/hosts.yml`: set `ansible_user`, `magicbox_lan_interface`,
-      `magicbox_lan_cidr` (1.7). Keep `ansible_host: magicbox.local`.
+      `magicbox_lan_cidr` (1.7). Keep `ansible_host: magicbox.local` and
+      `ansible_ssh_private_key_file: ~/.ssh/magicbox/id_ed25519`.
 - [ ] In `vault.yml`, four different passwords of 12+ characters (see
       `inventory/vault.example.yml`): `vault_portainer_admin_password`,
       `vault_postgresql_password`, `vault_rabbitmq_password`,
