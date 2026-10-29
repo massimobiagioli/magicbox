@@ -55,6 +55,16 @@ Image tags were checked on Docker Hub on 2026-10-28.
 | observability | `grafana/loki:3.7.9` | internal only | Log store (filesystem, TSDB v13) |
 | observability | `grafana/alloy:v1.21.2` | internal only | Log collector; replaces Promtail, EOL 2026-03-02 (ADR-0013) |
 
+## CI/CD stack (playbooks/ci-cd.yml)
+
+Deployed as the Portainer stack `jenkins` (ADR-0014). Images are built on
+MagicBox from pinned bases (checked 2026-10-29).
+
+| Component | Base / version | Port (LAN) | Rationale |
+|-----------|----------------|------------|-----------|
+| Jenkins controller | `jenkins/jenkins:2.580.2-lts-jdk21` + pinned plugins | 8443 (HTTPS, MagicBox CA) | Mature CI server that polls GitHub (no inbound webhooks) |
+| Jenkins agent | `jenkins/ssh-agent:9.3.1-jdk21` + `docker:29.9.2-cli` + uv 0.13.6 | internal only | Runs builds; uses the host Docker engine |
+
 ## Runtime layout on MagicBox
 
 | Path / object | Purpose |

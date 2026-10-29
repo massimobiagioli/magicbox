@@ -12,7 +12,7 @@ community.general 13.5.0, community.docker 5.4.0, community.crypto 3.5.1.
 
 | Item | Value |
 |------|-------|
-| Playbooks | `playbooks/site.yml` (host + Portainer), `playbooks/stacks.yml` (default stacks), `playbooks/update.yml` (OS packages) |
+| Playbooks | `playbooks/site.yml` (host + Portainer), `playbooks/stacks.yml` (default stacks), `playbooks/ci-cd.yml` (Jenkins), `playbooks/update.yml` (OS packages) |
 | Inventory | `inventory/hosts.yml` (git-ignored; template `inventory/hosts.example.yml`) |
 | Group | `magicbox` |
 | Project policy | `inventory/group_vars/magicbox/main.yml` |
@@ -28,6 +28,9 @@ controller*, queries Portainer from the controller over the LAN.
 `playbooks/stacks.yml` has one play, *Deploy default stacks through
 Portainer*, that runs the `stacks` role on group `magicbox`. Run it after
 `site.yml`.
+
+`playbooks/ci-cd.yml` has one play, *Deploy the CI/CD stack (Jenkins) through
+Portainer*, that runs the `stacks` role with `stacks_enabled: [jenkins]`.
 
 `playbooks/update.yml` has one play, *Update MagicBox packages*, that runs the
 `os_update` role. It needs the vault password only for `vault_become_password`.
@@ -47,6 +50,7 @@ Portainer*, that runs the `stacks` role on group `magicbox`. Run it after
 | Default stacks | `make stacks` |
 | Selected stacks only | `uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass -e '{"stacks_enabled": ["postgresql"]}'` |
 | Stacks: verification only | `uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass --tags verify` |
+| CI/CD stack (Jenkins) | `make ci-cd` |
 | Stack status (read-only) | `make status` |
 | Edit the vault | `make vault-edit` |
 | OS package update | `make update` |
@@ -73,6 +77,7 @@ fresh host because the packages they verify are not installed yet.
 | `portainer` | The `portainer` and `portainer_init` roles, including TLS tasks |
 | `portainer-init` | Only the `portainer_init` role (site environment) |
 | `stacks` | The `stacks` role (in `playbooks/stacks.yml`) |
+| `ci-cd` | The `stacks` role in `playbooks/ci-cd.yml` (Jenkins stack) |
 | `status` | The read-only status report (in `playbooks/status.yml`) |
 | `update` | The `os_update` role (in `playbooks/update.yml`) |
 | `tls` | Only TLS provisioning inside `portainer` (certificate renewal, CA fetch) |
@@ -299,7 +304,7 @@ site environment (ADR-0011). For each name in `stacks_enabled` it renders
 `roles/stacks/templates/<name>.yml.j2`, passes the secrets as stack
 environment variables, and creates the stack, or updates it when the compose
 file or environment differs or one of its containers is missing (e.g. an
-interrupted first deployment). Config files for `observability` are written to
+interrupted first deployment). Config files for `observability` and `jenkins` are written to
 `stacks_base_dir`; their checksum (`MAGICBOX_CONFIG_REVISION` label) forces a
 redeploy when they change.
 
@@ -309,6 +314,7 @@ redeploy when they change.
 | `postgresql` | postgresql | 5432 | postgresql_data |
 | `ollama` | ollama | 11434 | ollama_data |
 | `observability` | grafana, loki, alloy | 3000 (Grafana HTTPS) | grafana_data, loki_data, alloy_data |
+| `jenkins` (only via `playbooks/ci-cd.yml`) | jenkins, jenkins-agent | 8443 (Jenkins HTTPS) | jenkins_home, jenkins_agent_work |
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -333,10 +339,26 @@ redeploy when they change.
 | `stacks_grafana_admin_password` | `{{ vault_grafana_admin_password }}` | Grafana `admin` password (first start only). |
 | `stacks_ollama_models` | `[]` | Models to pull after deployment, e.g. `["llama3.2:3b"]`; never deleted. |
 | `stacks_loki_retention` | `168h` | Loki log retention. |
+| `stacks_jenkins_image` | `jenkins/jenkins:2.580.2-lts-jdk21` | Base of the controller image built on MagicBox. |
+| `stacks_jenkins_agent_base_image` | `jenkins/ssh-agent:9.3.1-jdk21` | Base of the agent image. |
+| `stacks_jenkins_docker_cli_image` | `docker:29.9.2-cli` | Source of the Docker CLI and plugins copied into the agent. |
+| `stacks_jenkins_uv_image` | `ghcr.io/astral-sh/uv:0.13.6` | Source of `uv` copied into the agent. |
+| `stacks_jenkins_plugins` | 10 plugins, pinned | Plugins baked into the controller image (name: version). |
+| `stacks_jenkins_port` | `8443` | Host port for the Jenkins UI (HTTPS, MagicBox certificate). |
+| `stacks_jenkins_heap` | `1g` | Controller JVM heap (`-Xmx`). |
+| `stacks_jenkins_memory_limit` | `2g` | Controller container memory limit. |
+| `stacks_jenkins_agent_memory_limit` | `4g` | Agent container memory limit (builds). |
+| `stacks_jenkins_agent_executors` | `2` | Parallel builds on the agent. |
+| `stacks_jenkins_admin_password` | `{{ vault_jenkins_admin_password }}` | Jenkins `admin` password (applied at every start). |
+| `stacks_jenkins_github_user` | `""` | GitHub user name stored with the token (credential `github`). |
+| `stacks_jenkins_github_token` | `{{ vault_jenkins_github_token }}` | Optional; becomes credential `github`. |
+| `stacks_jenkins_portainer_token` | `{{ vault_jenkins_portainer_token }}` | Optional; becomes credential `portainer-api-token`. |
 
 Internal data (`roles/stacks/vars/main.yml`, not meant to be overridden):
 `stacks_env` (environment per stack), `stacks_required_secrets`,
-`stacks_containers`.
+`stacks_containers`, `stacks_images`, and for Jenkins the image tag
+(`stacks_jenkins_build_tag`, a hash of the build files), the image names, the
+Jenkins UID and the PKCS#12 keystore password.
 
 **Prerequisites.** `playbooks/site.yml` completed (Portainer, `homelab`
 environment, DOCKER-USER filter); the vault contains the stack passwords.
@@ -347,6 +369,18 @@ PostgreSQL `pg_isready`. RabbitMQ `/api/overview` with the vault credentials.
 Ollama `/api/version`. Grafana `/api/health` over HTTPS with the MagicBox CA.
 Loki has a `container` label value `loki`, which proves Alloy -> Loki ->
 Grafana works.
+
+**Jenkins (`make ci-cd`, ADR-0014).** Ansible builds `magicbox/jenkins` and
+`magicbox/jenkins-agent` on MagicBox (tag = hash of the build files), writes
+`/opt/magicbox/stacks/jenkins/` (`casc/jenkins.yaml`, `secrets/` mode 0400
+for UID 1000, `tls/jenkins.p12`), generates the controller -> agent SSH key and
+deploys the stack. The agent's sshd host key is also generated by Ansible and
+pinned in JCasC, so a recreated agent is still trusted. Jenkins is configured only by JCasC: user `admin`, no
+sign-up, no anonymous access, 0 executors on the controller, node
+`docker-agent` (label `docker`) over SSH. Verification: admin login over HTTPS
+with the MagicBox CA, anonymous access refused, agent online, `docker version`
+works on the agent as user `jenkins`. Settings managed by JCasC and changed in
+the UI are overwritten at the next start; jobs are created in the UI.
 
 **Status.** `make status` (`playbooks/status.yml`, `tasks/status.yml`) changes
 nothing: it lists each image of the enabled stacks as OK or MISSING and each
@@ -367,6 +401,10 @@ when anything is not OK.
 - Grafana uses a copy of the Portainer certificate. After a certificate
   renewal by `site.yml`, run `stacks.yml` to refresh the copy.
 - First deployment downloads about 4 GB (Ollama is about 3.4 GB).
+- Jenkins agent: the mounted Docker socket is equivalent to root on MagicBox
+  (ADR-0014). Build only private repositories; no pull requests from forks.
+- Jenkins pipelines run against the host engine: `docker run -v $PWD:...`
+  mounts host paths, not the agent workspace.
 
 ## 12. Role `os_update` (playbooks/update.yml)
 
@@ -403,6 +441,7 @@ after the update (and after the reboot, if any). Before the first
 | Docs | `make docs-check` | Links, ADR registry, this reference covers all roles/variables/tags |
 | Container | `make test-container` | Full converge and `changed=0` second run in an Ubuntu 24.04 systemd container (arm64 or amd64 per workstation) |
 | Container + stacks | `make test-container ARGS="--with-stacks"` | Also runs `stacks.yml` twice (deploy + `changed=0`) |
+| Container + CI/CD | `make test-container ARGS="--with-ci-cd"` | Also runs `ci-cd.yml` twice (Jenkins images, login, agent online, `changed=0`) |
 | Host | `make deploy`, `make idempotency`, `make verify` | Real behaviour on MagicBox |
 
 The container test overrides `magicbox_expected_architecture`,

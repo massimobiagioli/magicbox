@@ -46,16 +46,19 @@ make deploy EXTRA="-e magicbox_confirm_destructive=true"   # first deployment
 make deploy          # later runs (asks the vault password; sudo password is in the vault)
 make verify
 make stacks          # default Portainer stacks
+make ci-cd           # CI/CD stack: Jenkins controller + SSH build agent
 make status          # read-only: stack images pulled, containers running/healthy
 make vault-edit      # edit the encrypted vault (creates it if missing)
 make update          # apt update + upgrade (EXTRA="-e os_update_reboot=true" reboots if needed)
 make test-container ARGS="--with-stacks"                   # includes stacks (~4 GB pulls)
+make test-container ARGS="--with-ci-cd"                    # includes the Jenkins stack
 ```
 
 ## Layout
 
 - `playbooks/site.yml` - host + Portainer (roles + controller verification play)
 - `playbooks/stacks.yml` - default Portainer stacks (RabbitMQ, PostgreSQL, Ollama, Grafana/Loki/Alloy)
+- `playbooks/ci-cd.yml` - CI/CD stack (Jenkins) via the `stacks` role
 - `playbooks/status.yml` - read-only stack status (images, containers)
 - `playbooks/update.yml` - OS package update (apt update + upgrade), optional reboot
 - `roles/` - `preflight`, `mdns`, `firewall`, `docker`, `portainer`, `portainer_init`, `stacks`, `os_update`
@@ -88,6 +91,7 @@ make test-container ARGS="--with-stacks"                   # includes stacks (~4
   - [ADR-0011](.docs/adr/adr-0011.md) - Default stacks as Portainer stacks
   - [ADR-0012](.docs/adr/adr-0012.md) - DOCKER-USER filter for published ports
   - [ADR-0013](.docs/adr/adr-0013.md) - Grafana Alloy instead of Promtail (EOL)
+  - [ADR-0014](.docs/adr/adr-0014.md) - Jenkins on MagicBox for CI/CD, polling GitHub
 
 ## Manuals
 
@@ -104,4 +108,4 @@ produces deterministic PDFs.
 - [tools/check_docs.py](tools/check_docs.py) - broken links, this index, ADR numbering/sections/registry, playbook-reference coverage, PDFs present
 - [tools/check_secrets.py](tools/check_secrets.py) - vault file encrypted; no plaintext `vault_*` values or private keys tracked
 - [tools/idempotency_check.py](tools/idempotency_check.py) - runs `ansible-playbook` twice, fails if the second run changes anything
-- [tools/container_test.py](tools/container_test.py) - disposable systemd container: full converge + idempotency check (`--with-stacks` adds the stacks playbook)
+- [tools/container_test.py](tools/container_test.py) - disposable systemd container: full converge + idempotency check (`--with-stacks` adds the stacks playbook, `--with-ci-cd` the Jenkins playbook)

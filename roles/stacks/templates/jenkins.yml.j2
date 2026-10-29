@@ -1,0 +1,66 @@
+# {{ ansible_managed }}
+# CI/CD: Jenkins controller (UI, scheduling, credentials; no builds) and one
+# SSH build agent with access to the MagicBox Docker engine (ADR-0014).
+x-config-revision: &config-revision
+  com.magicbox.config-revision: ${MAGICBOX_CONFIG_REVISION}
+
+services:
+  jenkins:
+    image: {{ stacks_jenkins_controller_image }}
+    # Built on MagicBox by Ansible; never pulled from a registry.
+    pull_policy: never
+    container_name: jenkins
+    restart: unless-stopped
+    labels: *config-revision
+    environment:
+      JAVA_OPTS: -Xmx{{ stacks_jenkins_heap }} -Djenkins.install.runSetupWizard=false
+      JENKINS_OPTS: >-
+        --httpPort=-1 --httpsPort=8443
+        --httpsKeyStore=/etc/jenkins/tls/jenkins.p12
+        --httpsKeyStorePassword={{ stacks_jenkins_keystore_password }}
+      CASC_JENKINS_CONFIG: /etc/jenkins/casc/jenkins.yaml
+    ports:
+      - "{{ stacks_jenkins_port }}:8443"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - {{ stacks_base_dir }}/jenkins/casc:/etc/jenkins/casc:ro
+      - {{ stacks_base_dir }}/jenkins/secrets:/run/secrets:ro
+      - {{ stacks_base_dir }}/jenkins/tls:/etc/jenkins/tls:ro
+    mem_limit: {{ stacks_jenkins_memory_limit }}
+    healthcheck:
+      test: ["CMD", "curl", "-skf", "-o", "/dev/null", "https://localhost:8443/login"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    networks: [jenkins]
+
+  jenkins-agent:
+    image: {{ stacks_jenkins_agent_image }}
+    pull_policy: never
+    container_name: jenkins-agent
+    restart: unless-stopped
+    labels: *config-revision
+    environment:
+      # Public half of the controller's SSH key (not a secret).
+      JENKINS_AGENT_SSH_PUBKEY: "{{ stacks_jenkins_agent_pubkey }}"
+    volumes:
+      # Builds use the MagicBox Docker engine: equivalent to root on the host.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - jenkins_agent_work:/home/jenkins/agent
+      # Fixed sshd host key (pinned in JCasC); setup-sshd keeps existing keys.
+      - {{ stacks_base_dir }}/jenkins/agent-hostkey/ssh_host_ed25519_key:/etc/ssh/ssh_host_ed25519_key:ro
+      - {{ stacks_base_dir }}/jenkins/agent-hostkey/ssh_host_ed25519_key.pub:/etc/ssh/ssh_host_ed25519_key.pub:ro
+    mem_limit: {{ stacks_jenkins_agent_memory_limit }}
+    # Not published: only the controller reaches the agent's sshd.
+    networks: [jenkins]
+
+networks:
+  jenkins:
+    name: jenkins
+
+volumes:
+  jenkins_home:
+    name: jenkins_home
+  jenkins_agent_work:
+    name: jenkins_agent_work

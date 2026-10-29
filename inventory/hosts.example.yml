@@ -30,3 +30,5 @@ all:
         # REQUIRED: the IPv4 LAN subnet allowed to reach SSH and Portainer
         # (e.g. 192.168.1.0/24). It is the subnet, not MagicBox's address.
         magicbox_lan_cidr: CHANGE_ME
+        # Optional (make ci-cd): GitHub user that owns vault_jenkins_github_token.
+        # stacks_jenkins_github_user: CHANGE_ME

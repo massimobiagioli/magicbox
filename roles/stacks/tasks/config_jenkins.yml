@@ -1,0 +1,137 @@
+---
+# Prepares the Jenkins stack: images, Configuration as Code, secret files, TLS.
+- name: Create Jenkins directories
+  ansible.builtin.file:
+    path: "{{ stacks_base_dir }}/jenkins/{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "", owner: root, mode: "0755" }
+    - { path: build, owner: root, mode: "0755" }
+    - { path: build/controller, owner: root, mode: "0755" }
+    - { path: build/agent, owner: root, mode: "0755" }
+    - { path: casc, owner: root, mode: "0755" }
+    # Readable only by Jenkins (UID 1000).
+    - { path: secrets, owner: "{{ stacks_jenkins_uid }}", mode: "0500" }
+    - { path: tls, owner: "{{ stacks_jenkins_uid }}", mode: "0500" }
+    # Agent sshd host key: read by root in the agent container only.
+    - { path: agent-hostkey, owner: root, mode: "0700" }
+
+- name: Write the Jenkins image build files
+  ansible.builtin.template:
+    src: "jenkins/{{ item.src }}"
+    dest: "{{ stacks_base_dir }}/jenkins/build/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - { src: controller.Dockerfile.j2, dest: controller/Dockerfile }
+    - { src: plugins.txt.j2, dest: controller/plugins.txt }
+    - { src: agent.Dockerfile.j2, dest: agent/Dockerfile }
+    - { src: agent-entrypoint.sh.j2, dest: agent/agent-entrypoint.sh }
+
+# The tag already encodes the build files, so an existing tag is up to date.
+- name: Build the Jenkins images on MagicBox
+  community.docker.docker_image_build:
+    name: "{{ item.image.split(':')[0] }}"
+    tag: "{{ item.image.split(':')[1] }}"
+    path: "{{ stacks_base_dir }}/jenkins/build/{{ item.dir }}"
+    rebuild: never
+  loop:
+    - { image: "{{ stacks_jenkins_controller_image }}", dir: controller }
+    - { image: "{{ stacks_jenkins_agent_image }}", dir: agent }
+
+- name: Generate the controller -> agent SSH key
+  community.crypto.openssh_keypair:
+    path: "{{ stacks_base_dir }}/jenkins/secrets/agent_ssh_key"
+    type: ed25519
+    comment: jenkins-controller@magicbox
+    owner: "{{ stacks_jenkins_uid }}"
+    group: root
+    mode: "0400"
+  register: stacks_jenkins_ssh_key
+
+# A fixed host key for the agent's sshd: Jenkins pins it, so recreating the
+# agent container does not break the controller's host key verification.
+- name: Generate the agent SSH host key
+  community.crypto.openssh_keypair:
+    path: "{{ stacks_base_dir }}/jenkins/agent-hostkey/ssh_host_ed25519_key"
+    type: ed25519
+    comment: jenkins-agent@magicbox
+    owner: root
+    group: root
+    mode: "0600"
+  register: stacks_jenkins_host_key
+
+- name: Write the Jenkins secret files from the vault
+  ansible.builtin.copy:
+    content: "{{ item.value }}"
+    dest: "{{ stacks_base_dir }}/jenkins/secrets/{{ item.name }}"
+    owner: "{{ stacks_jenkins_uid }}"
+    group: root
+    mode: "0400"
+  loop:
+    - { name: jenkins_admin_password, value: "{{ stacks_jenkins_admin_password }}" }
+    - { name: github_token, value: "{{ stacks_jenkins_github_token }}" }
+    - { name: portainer_api_token, value: "{{ stacks_jenkins_portainer_token }}" }
+  when: item.value | length > 0
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Remove secret files of optional tokens that are not set
+  ansible.builtin.file:
+    path: "{{ stacks_base_dir }}/jenkins/secrets/{{ item.name }}"
+    state: absent
+  loop:
+    - { name: github_token, value: "{{ stacks_jenkins_github_token }}" }
+    - { name: portainer_api_token, value: "{{ stacks_jenkins_portainer_token }}" }
+  when: item.value | length == 0
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Package the MagicBox TLS certificate and key for Jenkins (PKCS#12)
+  community.crypto.openssl_pkcs12:
+    path: "{{ stacks_base_dir }}/jenkins/tls/jenkins.p12"
+    certificate_path: "{{ magicbox_portainer_ca_cert | dirname }}/portainer.crt"
+    privatekey_path: "{{ magicbox_portainer_ca_cert | dirname }}/portainer.key"
+    friendly_name: jenkins
+    passphrase: "{{ stacks_jenkins_keystore_password }}"
+    owner: "{{ stacks_jenkins_uid }}"
+    group: root
+    mode: "0400"
+
+- name: Record the agent keys for the compose and JCasC files
+  ansible.builtin.set_fact:
+    stacks_jenkins_agent_pubkey: "{{ stacks_jenkins_ssh_key.public_key }}"
+    stacks_jenkins_agent_host_key: "{{ stacks_jenkins_host_key.public_key }}"
+
+- name: Write the Jenkins Configuration as Code file
+  ansible.builtin.template:
+    src: jenkins/casc.yaml.j2
+    dest: "{{ stacks_base_dir }}/jenkins/casc/jenkins.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Fingerprint the Jenkins configuration and secret files
+  ansible.builtin.stat:
+    path: "{{ stacks_base_dir }}/jenkins/{{ item }}"
+    checksum_algorithm: sha256
+  loop:
+    - casc/jenkins.yaml
+    - secrets/jenkins_admin_password
+    - secrets/github_token
+    - secrets/portainer_api_token
+    - tls/jenkins.p12
+    - agent-hostkey/ssh_host_ed25519_key
+  register: stacks_jenkins_files
+
+- name: Derive a configuration revision that redeploys containers when files change
+  ansible.builtin.set_fact:
+    stacks_config_revision: >-
+      {{ (stacks_jenkins_files.results | map(attribute='stat.checksum', default='absent') | join(','))
+         | hash('sha256') | truncate(16, true, '') }}

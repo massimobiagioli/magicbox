@@ -176,6 +176,43 @@ Deploy only some stacks:
 controller$ uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass -e '{"stacks_enabled": ["postgresql"]}'
 ```
 
+### 4.1 CI/CD (Jenkins, optional)
+
+- [ ] `make vault-edit`: set `vault_jenkins_admin_password` (12+ characters).
+      Leave `vault_jenkins_github_token` and `vault_jenkins_portainer_token`
+      empty for now.
+
+```text
+controller$ make ci-cd             # builds the Jenkins images on MagicBox (several minutes)
+```
+
+- [ ] `https://magicbox.local:8443/` opens (same CA as Portainer); log in as
+      `admin` / `vault_jenkins_admin_password`.
+- [ ] *Manage Jenkins > Nodes*: `docker-agent` is online.
+
+GitHub token (to read private repositories and show build status on commits):
+
+- [ ] GitHub > Settings > Developer settings > Fine-grained tokens > Generate:
+      only the application repositories; permissions *Contents: Read*,
+      *Commit statuses: Read and write*; set an expiry date.
+- [ ] `make vault-edit`: `vault_jenkins_github_token: "<token>"`.
+- [ ] In `inventory/hosts.yml` (vars): `stacks_jenkins_github_user: <github-user>`.
+
+Portainer token (for pipelines that deploy stacks):
+
+- [ ] Portainer > Administration > Users: add user `jenkins` (administrator).
+- [ ] Log in as `jenkins` > My account > Access tokens > Add: copy the token.
+- [ ] `make vault-edit`: `vault_jenkins_portainer_token: "<token>"`.
+
+```text
+controller$ make ci-cd             # adds credentials "github" and "portainer-api-token"
+```
+
+- [ ] *Manage Jenkins > Credentials* lists `github` and `portainer-api-token`.
+- [ ] New Item > Multibranch Pipeline: Branch source GitHub, credential
+      `github`, repository URL; Scan triggers: *Periodically, interval 5 minutes*.
+- [ ] Repositories private; do not build pull requests from forks.
+
 ## 5. Verification
 
 ```text
@@ -205,6 +242,7 @@ Services (from the LAN):
 | RabbitMQ AMQP | `amqp://magicbox.local:5672` | same as UI |
 | PostgreSQL | `magicbox.local:5432`, database `magicbox` | `magicbox` / `vault_postgresql_password` |
 | Ollama | `http://magicbox.local:11434/` | none (LAN only) |
+| Jenkins (if installed) | `https://magicbox.local:8443/` | `admin` / `vault_jenkins_admin_password` |
 
 - [ ] Grafana > Explore > Loki: `{container="postgresql"}` shows logs.
 
@@ -261,6 +299,8 @@ renewed automatically by any playbook run within 30 days of expiry.
 | Vault password rejected at login | Portainer was already initialised: reset (8.4) |
 | `stacks`: "Portainer rejected the vault password" | Password changed in the UI: update `vault_portainer_admin_password` |
 | `stacks`: environment not found | Run `make deploy` first |
+| `make ci-cd`: Jenkins agent offline | `sudo docker logs jenkins-agent`; `sudo docker logs jenkins` (SSH errors) |
+| Jenkins login fails | Password changed in the UI is reset at start: use `vault_jenkins_admin_password` |
 | `make stacks` waits a long time | `make status` (MISSING image: pull it, see 4) |
 | Image pull stuck (Ollama) | `sudo docker pull ollama/ollama:0.40.12` on MagicBox; `df -h /var/lib` |
 | `stacks`: wait for containers times out | The error lists container states and logs; slow pull: re-run `make stacks` |

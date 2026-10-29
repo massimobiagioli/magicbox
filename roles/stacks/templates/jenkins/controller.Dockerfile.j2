@@ -1,0 +1,5 @@
+# {{ ansible_managed }}
+# Jenkins controller with pinned plugins (no plugin installs from the UI).
+FROM {{ stacks_jenkins_image }}
+COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
+RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt

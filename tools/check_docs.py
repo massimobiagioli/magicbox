@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SKIP_DIRS = {".venv", ".ansible", ".serena", ".claude", ".prompt", ".git", "artifacts"}
+SKIP_DIRS = {".venv", ".ansible", ".serena", ".claude", ".prompt", ".git", "artifacts", ".tmp"}
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 ADR_NAME = re.compile(r"^adr-(\d{4})\.md$")
 ADR_SECTIONS = ("## Status", "## Context", "## Decision", "## Alternatives", "## Consequences")

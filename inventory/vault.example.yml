@@ -14,3 +14,9 @@ vault_become_password: ""
 vault_postgresql_password: ""
 vault_rabbitmq_password: ""
 vault_grafana_admin_password: ""
+
+# CI/CD (playbooks/ci-cd.yml). Admin password required (at least 12 characters);
+# the tokens are optional (leave empty until created, see the installation guide).
+vault_jenkins_admin_password: ""
+vault_jenkins_github_token: ""
+vault_jenkins_portainer_token: ""

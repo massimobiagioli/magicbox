@@ -1,0 +1,13 @@
+---
+# CI/CD: Jenkins controller + SSH build agent, deployed as the Portainer stack
+# "jenkins" in the site environment (ADR-0014). Requires playbooks/site.yml.
+# Run: make ci-cd
+- name: Deploy the CI/CD stack (Jenkins) through Portainer
+  hosts: magicbox
+  become: true
+  gather_facts: false
+  vars:
+    stacks_enabled: [jenkins]
+  roles:
+    - role: stacks
+      tags: [ci-cd]

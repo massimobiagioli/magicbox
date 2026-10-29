@@ -1,0 +1,16 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Give the jenkins user access to the mounted Docker socket. The socket's group
+# id differs between hosts, so it is read at start-up instead of baked into the
+# image. Equivalent to root on MagicBox (ADR-0014).
+set -eu
+if [ -S /var/run/docker.sock ]; then
+  gid=$(stat -c %g /var/run/docker.sock)
+  group=$(getent group "$gid" | cut -d: -f1 || true)
+  if [ -z "$group" ]; then
+    groupadd -g "$gid" docker-host
+    group=docker-host
+  fi
+  usermod -aG "$group" jenkins
+fi
+exec setup-sshd "$@"

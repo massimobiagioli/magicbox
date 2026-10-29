@@ -85,3 +85,49 @@
     - "'loki' in (stacks_loki_containers.json.data | default([]))"
   when: "'observability' in stacks_enabled"
   no_log: true
+
+- name: Check Jenkins over HTTPS with the MagicBox CA and the admin login
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_jenkins_port }}/whoAmI/api/json"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    url_username: admin
+    url_password: "{{ stacks_jenkins_admin_password }}"
+    force_basic_auth: true
+  register: stacks_jenkins_whoami
+  retries: 40
+  delay: 5
+  until:
+    - stacks_jenkins_whoami.status == 200
+    - stacks_jenkins_whoami.json.authenticated | default(false)
+  when: "'jenkins' in stacks_enabled"
+  no_log: true
+
+- name: Check Jenkins refuses anonymous access
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_jenkins_port }}/api/json"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    status_code: [401, 403]
+  when: "'jenkins' in stacks_enabled"
+
+- name: Check the Jenkins build agent is online
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_jenkins_port }}/computer/docker-agent/api/json"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    url_username: admin
+    url_password: "{{ stacks_jenkins_admin_password }}"
+    force_basic_auth: true
+  register: stacks_jenkins_agent
+  retries: 30
+  delay: 5
+  until:
+    - stacks_jenkins_agent.status == 200
+    - not (stacks_jenkins_agent.json.offline | default(true))
+  when: "'jenkins' in stacks_enabled"
+  no_log: true
+
+- name: Check the Jenkins agent can use the MagicBox Docker engine as user jenkins
+  community.docker.docker_container_exec:
+    container: jenkins-agent
+    argv: [su, jenkins, -c, "docker version --format '{{ '{{' }}.Server.Version{{ '}}' }}'"]
+  changed_when: false
+  when: "'jenkins' in stacks_enabled"

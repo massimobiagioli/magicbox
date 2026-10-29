@@ -12,6 +12,8 @@ stacks_env:
   ollama: {}
   observability:
     GF_SECURITY_ADMIN_PASSWORD: "{{ stacks_grafana_admin_password }}"
+  # Jenkins reads its secrets from files (config_jenkins.yml), not from env.
+  jenkins: {}
 
 # Passwords each stack needs (checked before deployment).
 stacks_required_secrets:
@@ -19,6 +21,7 @@ stacks_required_secrets:
   postgresql: [stacks_postgresql_password]
   ollama: []
   observability: [stacks_grafana_admin_password]
+  jenkins: [stacks_jenkins_admin_password]
 
 # Containers created by each stack (used by verification).
 stacks_containers:
@@ -26,9 +29,31 @@ stacks_containers:
   postgresql: [postgresql]
   ollama: [ollama]
   observability: [loki, alloy, grafana]
+  jenkins: [jenkins, jenkins-agent]
 
 stacks_images:
   rabbitmq: ["{{ stacks_rabbitmq_image }}"]
   postgresql: ["{{ stacks_postgresql_image }}"]
   ollama: ["{{ stacks_ollama_image }}"]
   observability: ["{{ stacks_loki_image }}", "{{ stacks_alloy_image }}", "{{ stacks_grafana_image }}"]
+  jenkins: ["{{ stacks_jenkins_controller_image }}", "{{ stacks_jenkins_agent_image }}"]
+
+# Jenkins images built on MagicBox. The tag carries a hash of the build files,
+# so changing a base image, plugin or script yields a new tag, a new build and
+# a redeploy of the stack.
+stacks_jenkins_build_tag: >-
+  {{ (lookup('ansible.builtin.template', 'jenkins/controller.Dockerfile.j2')
+      ~ lookup('ansible.builtin.template', 'jenkins/plugins.txt.j2')
+      ~ lookup('ansible.builtin.template', 'jenkins/agent.Dockerfile.j2')
+      ~ lookup('ansible.builtin.template', 'jenkins/agent-entrypoint.sh.j2'))
+     | hash('sha256') | truncate(12, true, '') }}
+stacks_jenkins_controller_image: "magicbox/jenkins:{{ stacks_jenkins_build_tag }}"
+stacks_jenkins_agent_image: "magicbox/jenkins-agent:{{ stacks_jenkins_build_tag }}"
+
+# Jenkins runs as UID 1000 in both images.
+stacks_jenkins_uid: "1000"
+
+# Password of the PKCS#12 keystore holding the TLS key for Jenkins. Not a
+# secret on its own: the keystore file is readable only by Jenkins (mode 0400),
+# and the same key is already on disk for Portainer.
+stacks_jenkins_keystore_password: magicbox-jenkins-tls

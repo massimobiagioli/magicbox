@@ -40,3 +40,41 @@ stacks_ollama_models: []
 
 # Loki log retention.
 stacks_loki_retention: 168h
+
+# --- Jenkins CI/CD stack (playbooks/ci-cd.yml; not in stacks_enabled by default) ---
+# Base images, pinned (checked on Docker Hub 2026-10-29). The controller and
+# agent images are built on MagicBox from these (ADR-0014).
+stacks_jenkins_image: jenkins/jenkins:2.580.2-lts-jdk21
+stacks_jenkins_agent_base_image: jenkins/ssh-agent:9.3.1-jdk21
+stacks_jenkins_docker_cli_image: docker:29.9.2-cli
+stacks_jenkins_uv_image: ghcr.io/astral-sh/uv:0.13.6
+
+# Plugins baked into the controller image, pinned for core 2.580.2 (Jenkins
+# update center, 2026-10-29). Dependencies are resolved by jenkins-plugin-cli.
+stacks_jenkins_plugins:
+  configuration-as-code: 2140.v00e72b_047734
+  workflow-aggregator: 608.v67378e9d3db_1
+  pipeline-stage-view: "2.41"
+  git: 5.11.0
+  github-branch-source: 1986.v801e40614d00
+  credentials-binding: 728.v902a_273b_8947
+  ssh-slaves: 3.1097.v868116049892
+  docker-workflow: 653.v2f2c08eff0ec
+  timestamper: "1.30"
+  ws-cleanup: "0.49"
+
+# HTTPS port of the Jenkins UI on the LAN (same certificate as Portainer).
+stacks_jenkins_port: 8443
+
+# Resource limits: Jenkins shares MagicBox with the other stacks.
+stacks_jenkins_heap: 1g
+stacks_jenkins_memory_limit: 2g
+stacks_jenkins_agent_memory_limit: 4g
+stacks_jenkins_agent_executors: 2
+
+# Credentials. The admin password is required; the tokens are optional and
+# become Jenkins credentials `github` and `portainer-api-token` when set.
+stacks_jenkins_admin_password: "{{ vault_jenkins_admin_password | default('') }}"
+stacks_jenkins_github_user: ""
+stacks_jenkins_github_token: "{{ vault_jenkins_github_token | default('') }}"
+stacks_jenkins_portainer_token: "{{ vault_jenkins_portainer_token | default('') }}"
