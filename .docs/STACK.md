@@ -74,6 +74,15 @@ Docker Hub on 2026-10-29.
 |-----------|-------|------------|-----------|
 | Kong Gateway OSS (DB-less) | `kong:3.9.4` | 80 (redirect), 443 (HTTPS, MagicBox CA), host networking | Single entry point `https://magicbox.local/<service>/`; API key for Ollama |
 
+## Apps (apps/registry.yml)
+
+Deployed by their own Jenkins pipelines as Portainer stacks; routed by Kong
+(`make apps`, ADR-0016).
+
+| App | Image | Port | URL |
+|-----|-------|------|-----|
+| tester-app | `magicbox/tester-app:<commit>` (built on MagicBox, `python:3.15.2-slim-trixie`) | `127.0.0.1:18001` -> 3000 | `https://magicbox.local/tester-app` |
+
 ## Runtime layout on MagicBox
 
 | Path / object | Purpose |

@@ -5,7 +5,7 @@
 _format_version: "3.0"
 
 services:
-{% for route in stacks_kong_routes %}
+{% for route in stacks_kong_all_routes %}
   - name: {{ route.name }}
     url: {{ route.url }}
     connect_timeout: 10000

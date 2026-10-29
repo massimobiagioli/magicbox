@@ -1,12 +1,16 @@
 ---
 # API gateway: Kong (DB-less) deployed as the Portainer stack "kong" in the
 # site environment (ADR-0015). Requires playbooks/site.yml (ports 80/443 in
-# ufw). Routes /portainer, /jenkins, /grafana, /rabbitmq and /ollama.
+# ufw). Routes /portainer, /jenkins, /grafana, /rabbitmq, /ollama and the apps
+# of apps/registry.yml (ADR-0016).
 # Run: make api-gateway
 - name: Deploy the API gateway stack (Kong) through Portainer
   hosts: magicbox
   become: true
   gather_facts: false
+  # Loaded here too, so a gateway redeploy keeps the app routes.
+  vars_files:
+    - ../apps/registry.yml
   vars:
     stacks_enabled: [kong]
   roles:

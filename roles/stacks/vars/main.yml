@@ -105,3 +105,22 @@ stacks_kong_routes:
     check: /ollama/api/version
     container: ollama
     key_auth: true
+
+# Routes of the apps in apps/registry.yml (magicbox_apps, ADR-0016): /<name>
+# -> 127.0.0.1:<port>, prefix stripped, so the app serves from "/".
+stacks_kong_app_routes: >-
+  {%- set routes = [] -%}
+  {%- for app in magicbox_apps | default([]) -%}
+  {%- set _ = routes.append({'name': 'app-' ~ app.name, 'path': '/' ~ app.name,
+        'url': 'http://127.0.0.1:' ~ app.port, 'strip': true, 'preserve_host': false,
+        'check': '/' ~ app.name, 'container': app.name}) -%}
+  {%- endfor -%}
+  {{ routes }}
+stacks_kong_all_routes: "{{ stacks_kong_routes + stacks_kong_app_routes }}"
+
+# Host ports an app must not use (services, gateway, Kong admin/status).
+stacks_reserved_ports: >-
+  {{ [stacks_rabbitmq_amqp_port, stacks_rabbitmq_management_port, stacks_postgresql_port,
+      stacks_ollama_port, stacks_grafana_port, stacks_jenkins_port, stacks_kong_http_port,
+      stacks_kong_https_port, magicbox_portainer_api_url | urlsplit('port'), 8001, 8100]
+     | map('int') | list }}

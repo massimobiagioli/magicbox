@@ -1,0 +1,20 @@
+---
+# Read-only report for playbooks/apps.yml: which registered apps are deployed.
+# An app without a container is not an error: its Jenkins pipeline deploys it.
+- name: Read the app containers
+  community.docker.docker_container_info:
+    name: "{{ item.name }}"
+  loop: "{{ magicbox_apps | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: stacks_apps_containers
+
+- name: Show the registered apps
+  ansible.builtin.debug:
+    msg: >-
+      {%- set lines = [] -%}
+      {%- for r in stacks_apps_containers.results -%}
+      {%- set _ = lines.append(r.item.name ~ ': ' ~ (('deployed, https://' ~ magicbox_hostname ~ '.local/' ~ r.item.name)
+            if r.exists else 'registered, not deployed yet (push to main; see its Jenkinsfile)')) -%}
+      {%- endfor -%}
+      {{ lines }}

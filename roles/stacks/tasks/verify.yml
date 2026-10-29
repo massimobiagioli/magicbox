@@ -139,7 +139,7 @@
 - name: Find which gateway upstream containers exist
   community.docker.docker_container_info:
     name: "{{ item }}"
-  loop: "{{ stacks_kong_routes | map(attribute='container') | unique }}"
+  loop: "{{ stacks_kong_all_routes | map(attribute='container') | unique }}"
   register: stacks_kong_upstreams
   when: "'kong' in stacks_enabled"
 
@@ -149,7 +149,7 @@
     ca_path: "{{ magicbox_portainer_ca_cert }}"
     headers: "{{ {'apikey': stacks_kong_ollama_api_key} if item.key_auth | default(false) else {} }}"
   loop: >-
-    {{ stacks_kong_routes | selectattr('container', 'in',
+    {{ stacks_kong_all_routes | selectattr('container', 'in',
        stacks_kong_upstreams.results | default([]) | selectattr('exists', 'defined')
        | selectattr('exists') | map(attribute='item') | list) }}
   loop_control:

@@ -1,0 +1,23 @@
+---
+# Registers the apps of apps/registry.yml in the API gateway (Kong): each app
+# gets https://magicbox.local/<name> -> 127.0.0.1:<port> (ADR-0016). The apps
+# themselves are deployed by their Jenkins pipelines. Requires
+# playbooks/api-gateway.yml prerequisites (site.yml, vault_kong_ollama_api_key).
+# Run: make apps
+- name: Register the apps in the API gateway (Kong)
+  hosts: magicbox
+  become: true
+  gather_facts: false
+  vars_files:
+    - ../apps/registry.yml
+  vars:
+    stacks_enabled: [kong]
+  roles:
+    - role: stacks
+      tags: [apps]
+  tasks:
+    - name: Report the registered apps
+      ansible.builtin.include_role:
+        name: stacks
+        tasks_from: apps_report
+      tags: [apps]

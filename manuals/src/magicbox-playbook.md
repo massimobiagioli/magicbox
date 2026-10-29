@@ -12,11 +12,12 @@ community.general 13.5.0, community.docker 5.4.0, community.crypto 3.5.1.
 
 | Item | Value |
 |------|-------|
-| Playbooks | `playbooks/site.yml` (host + Portainer), `playbooks/stacks.yml` (default stacks), `playbooks/ci-cd.yml` (Jenkins), `playbooks/api-gateway.yml` (Kong), `playbooks/update.yml` (OS packages) |
+| Playbooks | `playbooks/site.yml` (host + Portainer), `playbooks/stacks.yml` (default stacks), `playbooks/ci-cd.yml` (Jenkins), `playbooks/api-gateway.yml` (Kong), `playbooks/apps.yml` (app routes), `playbooks/update.yml` (OS packages) |
 | Inventory | `inventory/hosts.yml` (git-ignored; template `inventory/hosts.example.yml`) |
 | Group | `magicbox` |
 | Project policy | `inventory/group_vars/magicbox/main.yml` |
 | Secrets | `inventory/group_vars/magicbox/vault.yml` (ansible-vault, git-ignored) |
+| Apps registry | `apps/registry.yml` (`magicbox_apps`), loaded by `api-gateway.yml` and `apps.yml` |
 | Collections | `requirements.yml`, installed to `.ansible/collections` |
 | Result | Portainer CE at `https://magicbox.local:9443/` with environment `homelab`; default stacks; optional gateway at `https://magicbox.local/`; LAN only |
 
@@ -34,6 +35,10 @@ Portainer*, that runs the `stacks` role with `stacks_enabled: [jenkins]`.
 
 `playbooks/api-gateway.yml` has one play, *Deploy the API gateway stack (Kong)
 through Portainer*, that runs the `stacks` role with `stacks_enabled: [kong]`.
+
+`playbooks/apps.yml` has one play, *Register the apps in the API gateway
+(Kong)*: the same Kong deployment plus a report of the registered apps
+(`tasks/apps_report.yml`). Both playbooks load `apps/registry.yml`.
 
 `playbooks/update.yml` has one play, *Update MagicBox packages*, that runs the
 `os_update` role. It needs the vault password only for `vault_become_password`.
@@ -55,6 +60,7 @@ through Portainer*, that runs the `stacks` role with `stacks_enabled: [kong]`.
 | Stacks: verification only | `uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass --tags verify` |
 | CI/CD stack (Jenkins) | `make ci-cd` |
 | API gateway stack (Kong) | `make api-gateway` |
+| Register apps in the gateway | `make apps` |
 | Stack status (read-only) | `make status` |
 | Edit the vault | `make vault-edit` |
 | OS package update | `make update` |
@@ -83,6 +89,7 @@ fresh host because the packages they verify are not installed yet.
 | `stacks` | The `stacks` role (in `playbooks/stacks.yml`) |
 | `ci-cd` | The `stacks` role in `playbooks/ci-cd.yml` (Jenkins stack) |
 | `api-gateway` | The `stacks` role in `playbooks/api-gateway.yml` (Kong stack) |
+| `apps` | The `stacks` role and the apps report in `playbooks/apps.yml` |
 | `status` | The read-only status report (in `playbooks/status.yml`) |
 | `update` | The `os_update` role (in `playbooks/update.yml`) |
 | `tls` | Only TLS provisioning inside `portainer` (certificate renewal, CA fetch) |
@@ -116,6 +123,7 @@ Defined in `inventory/hosts.yml` (environment facts) or
 | `vault_portainer_admin_password` | required (vault) | At least 12 characters; in `vault.yml` only. |
 | `vault_postgresql_password`, `vault_rabbitmq_password`, `vault_grafana_admin_password` | required for the matching stack (vault) | At least 12 characters each. |
 | `vault_jenkins_admin_password`, `vault_jenkins_github_token`, `vault_jenkins_portainer_token` | Jenkins stack (vault) | Admin password (12+ characters) required; tokens optional. |
+| `magicbox_apps` | `apps/registry.yml` | Apps (ADR-0016): `name` (Portainer stack, container, URL path `/<name>`), `port` (host port on `127.0.0.1`, 18000-18999), `repo` (documentation). |
 | `vault_kong_ollama_api_key` | required for the Kong stack (vault) | At least 12 characters; API key for `https://magicbox.local/ollama/` (header or query parameter `apikey`). |
 
 ## 5. Role `preflight`
@@ -372,7 +380,8 @@ Internal data (`roles/stacks/vars/main.yml`, not meant to be overridden):
 `stacks_containers`, `stacks_images`, and for Jenkins the image tag
 (`stacks_jenkins_build_tag`, a hash of the build files), the image names, the
 Jenkins UID and the PKCS#12 keystore password, and the gateway routes
-(`stacks_kong_routes`).
+(`stacks_kong_routes`, `stacks_kong_app_routes` built from `magicbox_apps`,
+`stacks_kong_all_routes`, `stacks_reserved_ports`).
 
 **Prerequisites.** `playbooks/site.yml` completed (Portainer, `homelab`
 environment, DOCKER-USER filter); the vault contains the stack passwords.
@@ -411,10 +420,19 @@ status on `127.0.0.1:8100`, Kong Manager off.
 | `/grafana` | Grafana 3000 (HTTPS, `serve_from_sub_path`) | kept | Grafana login |
 | `/rabbitmq` | RabbitMQ 15672 (`management.path_prefix`) | kept | RabbitMQ login |
 | `/ollama/` | Ollama 11434 (API, no UI) | stripped | header/query `apikey` = `vault_kong_ollama_api_key` |
+| `/<name>` (each app in `apps/registry.yml`) | app `<port>` (HTTP) | stripped | app's own |
 
 Verification: every route whose container exists answers 200 through
 `https://magicbox.local/` with the MagicBox CA (Ollama with the key);
-`/ollama/` without the key gets 401; HTTP gets a 301 to HTTPS.
+`/ollama/` without the key gets 401; HTTP gets a 301 to HTTPS. Apps
+registry assertions: unique names (lowercase, digits, hyphens, not a built-in
+route) and unique ports outside `stacks_reserved_ports`.
+
+**Apps (`make apps`, ADR-0016).** Each app is deployed by its own Jenkins
+pipeline (Portainer stack `<name>`, image `magicbox/<name>:<commit>` built on
+MagicBox, `127.0.0.1:<port>`). `make apps` adds the routes, checks those of
+deployed apps and lists each app as `deployed` or `registered, not deployed
+yet`. Removing an app from the registry removes its route, not its stack.
 
 **Status.** `make status` (`playbooks/status.yml`, `tasks/status.yml`) changes
 nothing: it lists each image of the enabled stacks as OK or MISSING and each
@@ -483,6 +501,7 @@ after the update (and after the reboot, if any). Before the first
 | Container + stacks | `make test-container ARGS="--with-stacks"` | Also runs `stacks.yml` twice (deploy + `changed=0`) |
 | Container + CI/CD | `make test-container ARGS="--with-ci-cd"` | Also runs `ci-cd.yml` twice (Jenkins images, login, agent online, `changed=0`) |
 | Container + gateway | `make test-container ARGS="--with-api-gateway"` | Also runs `api-gateway.yml` twice (Kong, Portainer route, key-auth, redirect, `changed=0`) |
+| Container + apps | `make test-container ARGS="--with-api-gateway --with-apps"` | Also runs `apps.yml` twice (registry checks, app routes, `changed=0`) |
 | Host | `make deploy`, `make idempotency`, `make verify` | Real behaviour on MagicBox |
 
 The container test overrides `magicbox_expected_architecture`,

@@ -2,7 +2,7 @@
 """End-to-end test of playbooks/site.yml against a disposable systemd container.
 
 Usage:
-    uv run tools/container_test.py [--keep] [--with-stacks] [--with-ci-cd] [--with-api-gateway]
+    uv run tools/container_test.py [--keep] [--with-stacks] [--with-ci-cd] [--with-api-gateway] [--with-apps]
 
 Builds tests/container/Dockerfile, starts a privileged systemd container named
 `magicbox-test`, runs the playbook twice through tools/idempotency_check.py
@@ -10,7 +10,8 @@ Builds tests/container/Dockerfile, starts a privileged systemd container named
 the container unless --keep is given. With --with-stacks it then runs
 playbooks/stacks.yml twice as well (pulls about 4 GB of images); with
 --with-ci-cd it runs playbooks/ci-cd.yml twice (builds the Jenkins images);
-with --with-api-gateway it runs playbooks/api-gateway.yml twice (Kong).
+with --with-api-gateway it runs playbooks/api-gateway.yml twice (Kong); with
+--with-apps it runs playbooks/apps.yml twice (app routes in Kong).
 Requires a local Docker daemon.
 
 The container differs from MagicBox (architecture, nested Docker, no real LAN),
@@ -39,6 +40,7 @@ def main() -> None:
     with_stacks = "--with-stacks" in sys.argv[1:]
     with_ci_cd = "--with-ci-cd" in sys.argv[1:]
     with_api_gateway = "--with-api-gateway" in sys.argv[1:]
+    with_apps = "--with-apps" in sys.argv[1:]
     sh("docker", "build", "-q", "-t", IMAGE, str(ROOT / "tests/container"))
     sh("docker", "rm", "-f", NAME, check=False)
     sh("docker", "volume", "rm", "-f", f"{NAME}-docker", f"{NAME}-containerd", check=False)
@@ -78,6 +80,12 @@ def main() -> None:
                 sys.executable, str(ROOT / "tools/idempotency_check.py"),
                 "-i", str(ROOT / "tests/container/hosts.yml"),
                 str(ROOT / "playbooks/api-gateway.yml"),
+            )
+        if with_apps:
+            sh(
+                sys.executable, str(ROOT / "tools/idempotency_check.py"),
+                "-i", str(ROOT / "tests/container/hosts.yml"),
+                str(ROOT / "playbooks/apps.yml"),
             )
     finally:
         if not keep:

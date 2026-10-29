@@ -1,0 +1,14 @@
+---
+# MagicBox apps registry (ADR-0016). Each app is deployed by its own Jenkins
+# pipeline as the Portainer stack <name>; `make apps` registers it in the Kong
+# API gateway at https://magicbox.local/<name>.
+#
+#   name: Portainer stack and container name; also the URL path (/<name>).
+#         Lowercase letters, digits and hyphens.
+#   port: host port the app stack publishes on 127.0.0.1 only
+#         (ports: ["127.0.0.1:<port>:<container port>"]). Use 18000-18999.
+#   repo: source repository (documentation only).
+magicbox_apps:
+  - name: tester-app
+    port: 18001
+    repo: magicbox-tester-app
