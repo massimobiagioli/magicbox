@@ -78,3 +78,20 @@ stacks_jenkins_admin_password: "{{ vault_jenkins_admin_password | default('') }}
 stacks_jenkins_github_user: ""
 stacks_jenkins_github_token: "{{ vault_jenkins_github_token | default('') }}"
 stacks_jenkins_portainer_token: "{{ vault_jenkins_portainer_token | default('') }}"
+
+# --- Kong API gateway stack (playbooks/api-gateway.yml; not in stacks_enabled by default) ---
+# Kong OSS in DB-less mode, pinned (checked on Docker Hub 2026-10-29; 3.9 is
+# the last open-source line of Kong Gateway, ADR-0015).
+stacks_kong_image: kong:3.9.4
+
+# Host ports (host networking): HTTP only redirects to HTTPS. Both must be in
+# firewall_lan_tcp_ports (firewall role, playbooks/site.yml).
+stacks_kong_http_port: 80
+stacks_kong_https_port: 443
+
+# Seconds Kong waits for an upstream (long Ollama generations, Portainer
+# console, image pulls through the Portainer UI).
+stacks_kong_upstream_timeout: 600
+
+# API key required on /ollama (header or query parameter `apikey`).
+stacks_kong_ollama_api_key: "{{ vault_kong_ollama_api_key | default('') }}"

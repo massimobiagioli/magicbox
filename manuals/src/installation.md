@@ -186,7 +186,7 @@ controller$ uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass -e '{"
 controller$ make ci-cd             # builds the Jenkins images on MagicBox (several minutes)
 ```
 
-- [ ] `https://magicbox.local:8443/` opens (same CA as Portainer); log in as
+- [ ] `https://magicbox.local:8443/jenkins/` opens (same CA as Portainer); log in as
       `admin` / `vault_jenkins_admin_password`.
 - [ ] *Manage Jenkins > Nodes*: `docker-agent` is online.
 
@@ -213,6 +213,35 @@ controller$ make ci-cd             # adds credentials "github" and "portainer-ap
       `github`, repository URL; Scan triggers: *Periodically, interval 5 minutes*.
 - [ ] Repositories private; do not build pull requests from forks.
 
+### 4.2 API gateway (Kong, optional)
+
+Needs `make deploy` with this version first (opens ports 80 and 443 to the LAN).
+
+- [ ] `make vault-edit`: set `vault_kong_ollama_api_key` (12+ characters,
+      e.g. output of `openssl rand -hex 24`). It is the key for `/ollama/`.
+
+```text
+magicbox$ sudo docker pull kong:3.9.4
+controller$ make api-gateway
+```
+
+- [ ] `https://magicbox.local/` opens Portainer (redirect to `/portainer/`).
+- [ ] `https://magicbox.local/grafana/`, `/rabbitmq/`, `/jenkins/` (if
+      installed) open their login page.
+- [ ] Ollama (API only, no UI) answers with the key, `401` without it:
+
+```text
+controller$ curl -H "apikey: <vault_kong_ollama_api_key>" https://magicbox.local/ollama/api/version
+controller$ curl -s -o /dev/null -w '%{http_code}\n' https://magicbox.local/ollama/api/version   # 401
+```
+
+| Key | Where | Used by |
+|-----|-------|---------|
+| `vault_kong_ollama_api_key` | vault | Header `apikey: <key>` (or `?apikey=<key>`) on `https://magicbox.local/ollama/` |
+
+Rotate the key: change it with `make vault-edit`, run `make api-gateway`,
+update the clients.
+
 ## 5. Verification
 
 ```text
@@ -235,14 +264,15 @@ controller$ make idempotency VAULT_PASSWORD_FILE=<file>
 
 Services (from the LAN):
 
-| Service | Address | Login |
-|---------|---------|-------|
-| Grafana | `https://magicbox.local:3000/` | `admin` / `vault_grafana_admin_password` |
-| RabbitMQ UI | `http://magicbox.local:15672/` | `magicbox` / `vault_rabbitmq_password` |
-| RabbitMQ AMQP | `amqp://magicbox.local:5672` | same as UI |
-| PostgreSQL | `magicbox.local:5432`, database `magicbox` | `magicbox` / `vault_postgresql_password` |
-| Ollama | `http://magicbox.local:11434/` | none (LAN only) |
-| Jenkins (if installed) | `https://magicbox.local:8443/` | `admin` / `vault_jenkins_admin_password` |
+| Service | Address | Gateway (4.2) | Login |
+|---------|---------|---------------|-------|
+| Portainer | `https://magicbox.local:9443/` | `https://magicbox.local/portainer/` | `admin` / `vault_portainer_admin_password` |
+| Grafana | `https://magicbox.local:3000/grafana/` | `https://magicbox.local/grafana/` | `admin` / `vault_grafana_admin_password` |
+| RabbitMQ UI | `http://magicbox.local:15672/rabbitmq/` | `https://magicbox.local/rabbitmq/` | `magicbox` / `vault_rabbitmq_password` |
+| RabbitMQ AMQP | `amqp://magicbox.local:5672` | - | same as UI |
+| PostgreSQL | `magicbox.local:5432`, database `magicbox` | - | `magicbox` / `vault_postgresql_password` |
+| Ollama API | `http://magicbox.local:11434/` | `https://magicbox.local/ollama/` | direct: none (LAN only); gateway: header `apikey` |
+| Jenkins (if installed) | `https://magicbox.local:8443/jenkins/` | `https://magicbox.local/jenkins/` | `admin` / `vault_jenkins_admin_password` |
 
 - [ ] Grafana > Explore > Loki: `{container="postgresql"}` shows logs.
 
@@ -294,6 +324,7 @@ renewed automatically by any playbook run within 30 days of expiry.
 | `magicbox.local` not resolving | `systemctl status avahi-daemon`; see 6.1 |
 | No network over Wi-Fi | Check name/password in `/etc/netplan/60-wifi.yaml`; `sudo netplan --debug apply` |
 | Name became `magicbox-2.local` | Rename the other `magicbox` device; restart avahi-daemon |
+| Browser: `ERR_ADDRESS_UNREACHABLE` on `magicbox.local` | Client cached an IPv6 address: `make deploy`, wait 2 minutes or reconnect the client to the network |
 | Certificate warning | Install the CA (section 6); restart the browser |
 | Connection refused | `sudo docker ps -a`; `sudo docker logs portainer`; `sudo ufw status` |
 | Vault password rejected at login | Portainer was already initialised: reset (8.4) |
@@ -301,6 +332,10 @@ renewed automatically by any playbook run within 30 days of expiry.
 | `stacks`: environment not found | Run `make deploy` first |
 | `make ci-cd`: Jenkins agent offline | `sudo docker logs jenkins-agent`; `sudo docker logs jenkins` (SSH errors) |
 | Jenkins login fails | Password changed in the UI is reset at start: use `vault_jenkins_admin_password` |
+| `make api-gateway`: "ufw does not allow TCP port" | Run `make deploy` first |
+| Gateway route returns 502 | Service not running: `make status`; Jenkins needs `make ci-cd` |
+| Gateway `/ollama/` returns 401 | Send header `apikey: <vault_kong_ollama_api_key>` |
+| Old bookmark (`:3000/`, `:15672/`, `:8443/`) shows 404 | Add `/grafana/`, `/rabbitmq/`, `/jenkins/` to the URL |
 | `make stacks` waits a long time | `make status` (MISSING image: pull it, see 4) |
 | Image pull stuck (Ollama) | `sudo docker pull ollama/ollama:0.40.12` on MagicBox; `df -h /var/lib` |
 | `stacks`: wait for containers times out | The error lists container states and logs; slow pull: re-run `make stacks` |
@@ -359,5 +394,6 @@ and start Portainer.
 
 ### 8.6 Rotate the CA
 
-Delete `/opt/magicbox/portainer/certs/` on MagicBox, run `make deploy`, and
+Delete `/opt/magicbox/portainer/certs/` on MagicBox, run `make deploy`,
+`make stacks`, `make ci-cd` and `make api-gateway` (if installed), and
 install the new CA on every client. Remove the old CA from the clients.

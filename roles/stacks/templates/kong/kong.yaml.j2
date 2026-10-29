@@ -1,0 +1,61 @@
+# {{ ansible_managed }}
+# Kong declarative configuration (DB-less), loaded at start (ADR-0015).
+# Routes are HTTPS only; plain HTTP gets a 301 to HTTPS. Upstreams are on
+# 127.0.0.1, so their certificates are not verified (traffic stays on the host).
+_format_version: "3.0"
+
+services:
+{% for route in stacks_kong_routes %}
+  - name: {{ route.name }}
+    url: {{ route.url }}
+    connect_timeout: 10000
+    read_timeout: {{ stacks_kong_upstream_timeout * 1000 }}
+    write_timeout: {{ stacks_kong_upstream_timeout * 1000 }}
+    routes:
+      - name: {{ route.name }}
+        paths: ["{{ route.path }}"]
+        strip_path: {{ route.strip | lower }}
+        preserve_host: {{ route.preserve_host | lower }}
+        protocols: [https]
+        https_redirect_status_code: 301
+{% if route.key_auth | default(false) %}
+        # Streamed responses (token by token) are passed through unbuffered.
+        response_buffering: false
+        plugins:
+          - name: key-auth
+            config:
+              key_names: [apikey]
+              # The key is not forwarded to the upstream.
+              hide_credentials: true
+{% endif %}
+{% endfor %}
+
+  # Redirects only; the upstream is never contacted.
+  - name: redirects
+    url: http://127.0.0.1:9
+    routes:
+      # "/" opens Portainer.
+      - name: root
+        paths: ["~/$"]
+        protocols: [https]
+        https_redirect_status_code: 301
+        plugins:
+          - name: pre-function
+            config:
+              access:
+                - kong.response.exit(301, nil, { Location = "/portainer/" })
+      # Portainer loads its assets relative to the page: it needs the slash.
+      - name: portainer-slash
+        paths: ["~/portainer$"]
+        protocols: [https]
+        https_redirect_status_code: 301
+        plugins:
+          - name: pre-function
+            config:
+              access:
+                - kong.response.exit(301, nil, { Location = "/portainer/" })
+
+consumers:
+  - username: ollama-client
+    keyauth_credentials:
+      - key: {{ stacks_kong_ollama_api_key | to_json }}

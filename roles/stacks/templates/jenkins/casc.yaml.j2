@@ -39,7 +39,8 @@ jenkins:
 
 unclassified:
   location:
-    url: "https://{{ magicbox_hostname }}.local:{{ stacks_jenkins_port }}/"
+    # Served under /jenkins/ on its own port and through the API gateway.
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_jenkins_port }}/jenkins/"
 
 credentials:
   system:

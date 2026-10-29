@@ -36,7 +36,7 @@ curl -s http://magicbox.local:8000/simulate/warning; curl -s http://magicbox.loc
 
 ## Explore in Grafana
 
-`https://magicbox.local:3000/` -> **Explore** -> data source **Loki**, paste a query:
+`https://magicbox.local/grafana/` (or `https://magicbox.local:3000/grafana/`) -> **Explore** -> data source **Loki**, paste a query:
 
 | Goal | LogQL |
 |------|-------|

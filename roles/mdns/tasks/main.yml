@@ -60,3 +60,12 @@
   delay: 2
   until: mdns_self_resolve.rc == 0 and mdns_self_resolve.stdout | length > 0
   tags: [verify]
+
+- name: Verify MagicBox publishes no IPv6 address for its mDNS name
+  ansible.builtin.command:
+    argv: [avahi-resolve-host-name, -6, "{{ magicbox_hostname }}.local"]
+  register: mdns_self_resolve_v6
+  changed_when: false
+  failed_when: mdns_self_resolve_v6.rc == 0 and mdns_self_resolve_v6.stdout | length > 0
+  when: not mdns_use_ipv6
+  tags: [verify]

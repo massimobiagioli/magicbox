@@ -1,5 +1,8 @@
 # {{ ansible_managed }}
-# RabbitMQ message broker with the management UI.
+# RabbitMQ message broker with the management UI (under /rabbitmq/).
+x-config-revision: &config-revision
+  com.magicbox.config-revision: ${MAGICBOX_CONFIG_REVISION}
+
 services:
   rabbitmq:
     image: {{ stacks_rabbitmq_image }}
@@ -7,6 +10,7 @@ services:
     # RabbitMQ stores data per node name; a fixed hostname keeps it stable.
     hostname: rabbitmq
     restart: unless-stopped
+    labels: *config-revision
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
@@ -15,6 +19,7 @@ services:
       - "{{ stacks_rabbitmq_management_port }}:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - {{ stacks_base_dir }}/rabbitmq/magicbox.conf:/etc/rabbitmq/conf.d/20-magicbox.conf:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 30s

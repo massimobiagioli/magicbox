@@ -15,7 +15,7 @@ services:
     environment:
       JAVA_OPTS: -Xmx{{ stacks_jenkins_heap }} -Djenkins.install.runSetupWizard=false
       JENKINS_OPTS: >-
-        --httpPort=-1 --httpsPort=8443
+        --httpPort=-1 --httpsPort=8443 --prefix=/jenkins
         --httpsKeyStore=/etc/jenkins/tls/jenkins.p12
         --httpsKeyStorePassword={{ stacks_jenkins_keystore_password }}
       CASC_JENKINS_CONFIG: /etc/jenkins/casc/jenkins.yaml
@@ -28,7 +28,7 @@ services:
       - {{ stacks_base_dir }}/jenkins/tls:/etc/jenkins/tls:ro
     mem_limit: {{ stacks_jenkins_memory_limit }}
     healthcheck:
-      test: ["CMD", "curl", "-skf", "-o", "/dev/null", "https://localhost:8443/login"]
+      test: ["CMD", "curl", "-skf", "-o", "/dev/null", "https://localhost:8443/jenkins/login"]
       interval: 30s
       timeout: 5s
       retries: 5

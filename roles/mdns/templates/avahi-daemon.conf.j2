@@ -14,6 +14,9 @@ enable-wide-area=no
 
 [publish]
 publish-addresses=yes
+# use-ipv6=no alone still announces the IPv6 link-local address (AAAA) over
+# IPv4 mDNS; browsers that try it first fail with "address unreachable".
+publish-aaaa-on-ipv4={{ mdns_use_ipv6 | ternary('yes', 'no') }}
 # Do not advertise OS/hardware details or a workstation service.
 publish-hinfo=no
 publish-workstation=no

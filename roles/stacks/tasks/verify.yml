@@ -48,7 +48,7 @@
 
 - name: Check the RabbitMQ management API with the vault credentials
   ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ stacks_rabbitmq_management_port }}/api/overview"
+    url: "http://127.0.0.1:{{ stacks_rabbitmq_management_port }}/rabbitmq/api/overview"
     url_username: "{{ stacks_rabbitmq_user }}"
     url_password: "{{ stacks_rabbitmq_password }}"
     force_basic_auth: true
@@ -62,7 +62,7 @@
 
 - name: Check Grafana over HTTPS with the MagicBox CA
   ansible.builtin.uri:
-    url: "https://{{ magicbox_hostname }}.local:{{ stacks_grafana_port }}/api/health"
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_grafana_port }}/grafana/api/health"
     ca_path: "{{ magicbox_portainer_ca_cert }}"
   register: stacks_grafana_health
   retries: 20
@@ -72,11 +72,14 @@
 
 - name: Check that Loki receives container logs shipped by Alloy (via Grafana)
   ansible.builtin.uri:
-    url: "https://{{ magicbox_hostname }}.local:{{ stacks_grafana_port }}/api/datasources/proxy/uid/loki/loki/api/v1/label/container/values"
+    url: >-
+      https://{{ magicbox_hostname }}.local:{{ stacks_grafana_port }}/grafana{{ stacks_loki_labels_path }}
     ca_path: "{{ magicbox_portainer_ca_cert }}"
     url_username: admin
     url_password: "{{ stacks_grafana_admin_password }}"
     force_basic_auth: true
+  vars:
+    stacks_loki_labels_path: /api/datasources/proxy/uid/loki/loki/api/v1/label/container/values
   register: stacks_loki_containers
   retries: 30
   delay: 5
@@ -88,7 +91,7 @@
 
 - name: Check Jenkins over HTTPS with the MagicBox CA and the admin login
   ansible.builtin.uri:
-    url: "https://{{ magicbox_hostname }}.local:{{ stacks_jenkins_port }}/whoAmI/api/json"
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_jenkins_port }}/jenkins/whoAmI/api/json"
     ca_path: "{{ magicbox_portainer_ca_cert }}"
     url_username: admin
     url_password: "{{ stacks_jenkins_admin_password }}"
@@ -104,14 +107,14 @@
 
 - name: Check Jenkins refuses anonymous access
   ansible.builtin.uri:
-    url: "https://{{ magicbox_hostname }}.local:{{ stacks_jenkins_port }}/api/json"
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_jenkins_port }}/jenkins/api/json"
     ca_path: "{{ magicbox_portainer_ca_cert }}"
     status_code: [401, 403]
   when: "'jenkins' in stacks_enabled"
 
 - name: Check the Jenkins build agent is online
   ansible.builtin.uri:
-    url: "https://{{ magicbox_hostname }}.local:{{ stacks_jenkins_port }}/computer/docker-agent/api/json"
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_jenkins_port }}/jenkins/computer/docker-agent/api/json"
     ca_path: "{{ magicbox_portainer_ca_cert }}"
     url_username: admin
     url_password: "{{ stacks_jenkins_admin_password }}"
@@ -131,3 +134,47 @@
     argv: [su, jenkins, -c, "docker version --format '{{ '{{' }}.Server.Version{{ '}}' }}'"]
   changed_when: false
   when: "'jenkins' in stacks_enabled"
+
+# Each route is checked only when its service runs (Jenkins is optional).
+- name: Find which gateway upstream containers exist
+  community.docker.docker_container_info:
+    name: "{{ item }}"
+  loop: "{{ stacks_kong_routes | map(attribute='container') | unique }}"
+  register: stacks_kong_upstreams
+  when: "'kong' in stacks_enabled"
+
+- name: Check each gateway route reaches its service over HTTPS with the MagicBox CA
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_kong_https_port }}{{ item.check }}"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers: "{{ {'apikey': stacks_kong_ollama_api_key} if item.key_auth | default(false) else {} }}"
+  loop: >-
+    {{ stacks_kong_routes | selectattr('container', 'in',
+       stacks_kong_upstreams.results | default([]) | selectattr('exists', 'defined')
+       | selectattr('exists') | map(attribute='item') | list) }}
+  loop_control:
+    label: "{{ item.name }}"
+  register: stacks_kong_route_check
+  retries: 20
+  delay: 3
+  until: stacks_kong_route_check.status == 200
+  when: "'kong' in stacks_enabled"
+  no_log: true
+
+- name: Check the gateway refuses /ollama without the API key
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_kong_https_port }}/ollama/api/version"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    status_code: 401
+  when: "'kong' in stacks_enabled"
+
+- name: Check the gateway redirects HTTP to HTTPS
+  ansible.builtin.uri:
+    url: "http://{{ magicbox_hostname }}.local:{{ stacks_kong_http_port }}/portainer/"
+    follow_redirects: none
+    status_code: 301
+  register: stacks_kong_redirect
+  failed_when: >-
+    stacks_kong_redirect.status != 301
+    or not stacks_kong_redirect.location is match('https://')
+  when: "'kong' in stacks_enabled"

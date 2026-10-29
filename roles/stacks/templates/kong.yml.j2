@@ -1,0 +1,44 @@
+# {{ ansible_managed }}
+# API gateway: Kong OSS in DB-less mode. Routes https://<host>.local/<path>
+# to the MagicBox UIs and APIs (ADR-0015). Host networking: upstreams are
+# reached on 127.0.0.1, and ports 80/443 are filtered by ufw like Portainer.
+x-config-revision: &config-revision
+  com.magicbox.config-revision: ${MAGICBOX_CONFIG_REVISION}
+
+services:
+  kong:
+    image: {{ stacks_kong_image }}
+    container_name: kong
+    restart: unless-stopped
+    network_mode: host
+    # The nginx master binds ports 80/443 and reads the key as root; the
+    # workers that handle requests run as user kong (nginx_user).
+    user: root
+    labels: *config-revision
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/declarative/kong.yaml
+      KONG_PROXY_LISTEN: >-
+        0.0.0.0:{{ stacks_kong_http_port }},
+        0.0.0.0:{{ stacks_kong_https_port }} ssl http2
+      KONG_SSL_CERT: /etc/kong/tls/kong.crt
+      KONG_SSL_CERT_KEY: /etc/kong/tls/kong.key
+      # Admin API (read-only in DB-less mode) and status on loopback only;
+      # Kong Manager is disabled.
+      KONG_ADMIN_LISTEN: 127.0.0.1:8001
+      KONG_STATUS_LISTEN: 127.0.0.1:8100
+      KONG_ADMIN_GUI_LISTEN: "off"
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ANONYMOUS_REPORTS: "off"
+    volumes:
+      - {{ stacks_base_dir }}/kong/declarative:/etc/kong/declarative:ro
+      - {{ stacks_base_dir }}/kong/tls:/etc/kong/tls:ro
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s

@@ -9,7 +9,7 @@ VAULT_FILE := inventory/group_vars/magicbox/vault.yml
 BECOME ?=
 
 .PHONY: help setup lint syntax docs-check secrets-check manuals manuals-check check \
-        test-container deploy verify idempotency stacks ci-cd status update vault-edit
+        test-container deploy verify idempotency stacks ci-cd api-gateway status update vault-edit
 
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "%-16s %s\n", $$1, $$2}'
@@ -19,7 +19,7 @@ setup: ## Create .venv from uv.lock and install pinned Ansible collections
 	$(RUN) ansible-galaxy collection install -r requirements.yml -p $(COLLECTIONS)
 
 syntax: ## Ansible syntax check
-	$(RUN) ansible-playbook -i $(LINT_INVENTORY) playbooks/site.yml playbooks/stacks.yml playbooks/ci-cd.yml playbooks/status.yml playbooks/update.yml --syntax-check
+	$(RUN) ansible-playbook -i $(LINT_INVENTORY) playbooks/site.yml playbooks/stacks.yml playbooks/ci-cd.yml playbooks/api-gateway.yml playbooks/status.yml playbooks/update.yml --syntax-check
 
 lint: syntax ## yamllint + ansible-lint (production profile)
 	$(RUN) yamllint .
@@ -39,7 +39,7 @@ manuals-check: ## Rebuild manuals and fail if committed PDFs were stale
 
 check: lint secrets-check manuals docs-check ## All local checks (no target host needed)
 
-test-container: ## Converge + idempotency test in a disposable systemd container (ARGS="--with-stacks --with-ci-cd")
+test-container: ## Converge + idempotency test in a disposable systemd container (ARGS="--with-stacks --with-ci-cd --with-api-gateway")
 	$(RUN) tools/container_test.py $(ARGS)
 
 deploy: ## Apply the playbook to MagicBox (pass EXTRA="-e magicbox_confirm_destructive=true" on first run)
@@ -56,6 +56,9 @@ stacks: ## Deploy the default Portainer stacks to MagicBox (run deploy first)
 
 ci-cd: ## Deploy the CI/CD stack (Jenkins) to MagicBox (run deploy first)
 	$(RUN) ansible-playbook playbooks/ci-cd.yml --ask-vault-pass $(BECOME) $(EXTRA)
+
+api-gateway: ## Deploy the API gateway stack (Kong) to MagicBox (run deploy first)
+	$(RUN) ansible-playbook playbooks/api-gateway.yml --ask-vault-pass $(BECOME) $(EXTRA)
 
 status: ## Read-only: are stack images pulled and containers running/healthy on MagicBox?
 	$(RUN) ansible-playbook playbooks/status.yml --ask-vault-pass $(BECOME) $(EXTRA)

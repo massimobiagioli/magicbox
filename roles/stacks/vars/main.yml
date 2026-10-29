@@ -14,6 +14,8 @@ stacks_env:
     GF_SECURITY_ADMIN_PASSWORD: "{{ stacks_grafana_admin_password }}"
   # Jenkins reads its secrets from files (config_jenkins.yml), not from env.
   jenkins: {}
+  # Kong reads its declarative configuration (with the API key) from a file.
+  kong: {}
 
 # Passwords each stack needs (checked before deployment).
 stacks_required_secrets:
@@ -22,6 +24,7 @@ stacks_required_secrets:
   ollama: []
   observability: [stacks_grafana_admin_password]
   jenkins: [stacks_jenkins_admin_password]
+  kong: [stacks_kong_ollama_api_key]
 
 # Containers created by each stack (used by verification).
 stacks_containers:
@@ -30,6 +33,7 @@ stacks_containers:
   ollama: [ollama]
   observability: [loki, alloy, grafana]
   jenkins: [jenkins, jenkins-agent]
+  kong: [kong]
 
 stacks_images:
   rabbitmq: ["{{ stacks_rabbitmq_image }}"]
@@ -37,6 +41,7 @@ stacks_images:
   ollama: ["{{ stacks_ollama_image }}"]
   observability: ["{{ stacks_loki_image }}", "{{ stacks_alloy_image }}", "{{ stacks_grafana_image }}"]
   jenkins: ["{{ stacks_jenkins_controller_image }}", "{{ stacks_jenkins_agent_image }}"]
+  kong: ["{{ stacks_kong_image }}"]
 
 # Jenkins images built on MagicBox. The tag carries a hash of the build files,
 # so changing a base image, plugin or script yields a new tag, a new build and
@@ -57,3 +62,46 @@ stacks_jenkins_uid: "1000"
 # secret on its own: the keystore file is readable only by Jenkins (mode 0400),
 # and the same key is already on disk for Portainer.
 stacks_jenkins_keystore_password: magicbox-jenkins-tls
+
+# API gateway routes (ADR-0015): https://<host>.local/<path> -> upstream on
+# 127.0.0.1 (Kong uses host networking). `strip`: the service serves from /,
+# so the path is removed before forwarding; the others serve from the same
+# sub-path on their own port too. `container` gates the verification check.
+stacks_kong_routes:
+  - name: portainer
+    path: /portainer/
+    url: "https://127.0.0.1:{{ magicbox_portainer_api_url | urlsplit('port') }}"
+    strip: true
+    preserve_host: true
+    check: /portainer/api/system/status
+    container: kong
+  - name: jenkins
+    path: /jenkins
+    url: "https://127.0.0.1:{{ stacks_jenkins_port }}"
+    strip: false
+    preserve_host: true
+    check: /jenkins/login
+    container: jenkins
+  - name: grafana
+    path: /grafana
+    url: "https://127.0.0.1:{{ stacks_grafana_port }}"
+    strip: false
+    preserve_host: true
+    check: /grafana/api/health
+    container: grafana
+  - name: rabbitmq
+    path: /rabbitmq
+    url: "http://127.0.0.1:{{ stacks_rabbitmq_management_port }}"
+    strip: false
+    preserve_host: true
+    check: /rabbitmq/
+    container: rabbitmq
+  # Ollama has no UI and no authentication: the gateway requires an API key.
+  - name: ollama
+    path: /ollama/
+    url: "http://127.0.0.1:{{ stacks_ollama_port }}"
+    strip: true
+    preserve_host: false
+    check: /ollama/api/version
+    container: ollama
+    key_auth: true

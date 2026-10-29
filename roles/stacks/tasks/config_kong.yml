@@ -1,0 +1,57 @@
+---
+# Prepares the Kong API gateway: firewall prerequisite, declarative config, TLS.
+- name: Read the ufw rules
+  ansible.builtin.command:
+    argv: [ufw, status]
+  register: stacks_kong_ufw
+  changed_when: false
+
+- name: Assert the gateway ports are open to the LAN (firewall role)
+  ansible.builtin.assert:
+    that:
+      - stacks_kong_ufw.stdout is search('(?m)^' ~ item ~ '/tcp\s+ALLOW')
+    fail_msg: >-
+      ufw does not allow TCP port {{ item }} from the LAN. Keep it in
+      firewall_lan_tcp_ports and run `make deploy` before `make api-gateway`.
+    quiet: true
+  loop:
+    - "{{ stacks_kong_http_port }}"
+    - "{{ stacks_kong_https_port }}"
+
+- name: Create Kong directories
+  ansible.builtin.file:
+    path: "{{ stacks_base_dir }}/kong/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ '0755' if item == '' else '0700' }}"
+  loop: ["", declarative, tls]
+
+- name: Write the Kong declarative configuration (contains the Ollama API key)
+  ansible.builtin.template:
+    src: kong/kong.yaml.j2
+    dest: "{{ stacks_base_dir }}/kong/declarative/kong.yaml"
+    owner: root
+    group: root
+    mode: "0400"
+  register: stacks_kong_config
+  no_log: true
+
+- name: Give Kong a copy of the MagicBox TLS certificate and key
+  ansible.builtin.copy:
+    src: "{{ magicbox_portainer_ca_cert | dirname }}/{{ item.src }}"
+    dest: "{{ stacks_base_dir }}/kong/tls/{{ item.dest }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0400"
+  loop:
+    - { src: portainer.crt, dest: kong.crt }
+    - { src: portainer.key, dest: kong.key }
+  register: stacks_kong_tls
+
+- name: Derive a configuration revision that redeploys Kong when files change
+  ansible.builtin.set_fact:
+    stacks_config_revision: >-
+      {{ (([stacks_kong_config] + stacks_kong_tls.results)
+          | map(attribute='checksum') | join(',')) | hash('sha256') | truncate(16, true, '') }}

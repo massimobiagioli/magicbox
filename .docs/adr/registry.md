@@ -21,3 +21,4 @@ Consequences, then list it here and in [CLAUDE.md](../../CLAUDE.md).
 | [ADR-0012](adr-0012.md) | Restrict Docker-published ports to the LAN with DOCKER-USER | Accepted |
 | [ADR-0013](adr-0013.md) | Log collection with Grafana Alloy instead of Promtail | Accepted |
 | [ADR-0014](adr-0014.md) | Jenkins on MagicBox for CI/CD, polling GitHub | Accepted |
+| [ADR-0015](adr-0015.md) | Kong API gateway with path-based routes | Accepted |

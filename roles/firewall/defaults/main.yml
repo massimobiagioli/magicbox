@@ -5,6 +5,8 @@ firewall_ssh_port: 22
 # TCP ports allowed from magicbox_lan_cidr in addition to SSH.
 firewall_lan_tcp_ports:
   - 9443  # Portainer HTTPS UI/API
+  - 80    # API gateway (Kong): redirects to HTTPS
+  - 443   # API gateway (Kong) HTTPS
 
 # UDP ports allowed from magicbox_lan_cidr.
 firewall_lan_udp_ports:

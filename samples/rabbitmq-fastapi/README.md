@@ -21,5 +21,5 @@ uv run pytest                             # unit tests; + round trip when RABBIT
 docker compose up --build -d              # reads RABBITMQ_URL from .env
 ```
 
-The queue is visible in the RabbitMQ UI: `http://magicbox.local:15672/` → Queues.
+The queue is visible in the RabbitMQ UI: `https://magicbox.local/rabbitmq/` (or `http://magicbox.local:15672/rabbitmq/`) → Queues.
 Requires the controller on the MagicBox LAN (firewall).

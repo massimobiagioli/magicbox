@@ -2,7 +2,7 @@
 # Deploys one stack (stacks_name) through the Portainer API, idempotently.
 - name: "Write configuration files for {{ stacks_name }}"
   ansible.builtin.include_tasks: "config_{{ stacks_name }}.yml"
-  when: stacks_name in ['observability', 'jenkins']
+  when: stacks_name in ['rabbitmq', 'observability', 'jenkins', 'kong']
 
 - name: "Compute the desired state of {{ stacks_name }}"
   ansible.builtin.set_fact:

@@ -48,10 +48,10 @@ Image tags were checked on Docker Hub on 2026-10-28.
 
 | Stack | Image | Port (LAN) | Rationale |
 |-------|-------|------------|-----------|
-| rabbitmq | `rabbitmq:4.3.7-management` | 5672 AMQP, 15672 UI (HTTP) | Current 4.x with management plugin |
+| rabbitmq | `rabbitmq:4.3.7-management` | 5672 AMQP, 15672 UI (HTTP, `/rabbitmq/`) | Current 4.x with management plugin |
 | postgresql | `postgres:18.6` | 5432 | Newest major, supported until 2030-11-14 ("LTS" choice) |
 | ollama | `ollama/ollama:0.40.12` | 11434 (HTTP, no auth) | Local LLM runtime, CPU inference |
-| observability | `grafana/grafana:13.2.5` | 3000 (HTTPS, MagicBox CA) | Dashboards and log exploration |
+| observability | `grafana/grafana:13.2.5` | 3000 (HTTPS, MagicBox CA, `/grafana/`) | Dashboards and log exploration |
 | observability | `grafana/loki:3.7.9` | internal only | Log store (filesystem, TSDB v13) |
 | observability | `grafana/alloy:v1.21.2` | internal only | Log collector; replaces Promtail, EOL 2026-03-02 (ADR-0013) |
 
@@ -62,8 +62,17 @@ MagicBox from pinned bases (checked 2026-10-29).
 
 | Component | Base / version | Port (LAN) | Rationale |
 |-----------|----------------|------------|-----------|
-| Jenkins controller | `jenkins/jenkins:2.580.2-lts-jdk21` + pinned plugins | 8443 (HTTPS, MagicBox CA) | Mature CI server that polls GitHub (no inbound webhooks) |
+| Jenkins controller | `jenkins/jenkins:2.580.2-lts-jdk21` + pinned plugins | 8443 (HTTPS, MagicBox CA, `/jenkins/`) | Mature CI server that polls GitHub (no inbound webhooks) |
 | Jenkins agent | `jenkins/ssh-agent:9.3.1-jdk21` + `docker:29.9.2-cli` + uv 0.13.6 | internal only | Runs builds; uses the host Docker engine |
+
+## API gateway stack (playbooks/api-gateway.yml)
+
+Deployed as the Portainer stack `kong` (ADR-0015). Image tag checked on
+Docker Hub on 2026-10-29.
+
+| Component | Image | Port (LAN) | Rationale |
+|-----------|-------|------------|-----------|
+| Kong Gateway OSS (DB-less) | `kong:3.9.4` | 80 (redirect), 443 (HTTPS, MagicBox CA), host networking | Single entry point `https://magicbox.local/<service>/`; API key for Ollama |
 
 ## Runtime layout on MagicBox
 
@@ -78,6 +87,8 @@ MagicBox from pinned bases (checked 2026-10-29).
 | `/etc/systemd/resolved.conf.d/magicbox-mdns.conf` | Disables resolved's mDNS/LLMNR |
 | `/etc/ufw/after.rules` (MAGICBOX DOCKER-USER block) | Limits Docker-published ports to the LAN (ADR-0012) |
 | `/opt/magicbox/stacks/observability/` | Loki and Alloy configs, Grafana data source, Grafana TLS copy |
+| `/opt/magicbox/stacks/rabbitmq/magicbox.conf` | RabbitMQ management path prefix |
+| `/opt/magicbox/stacks/kong/` | Kong declarative config (with the API key, root 0400), TLS copy |
 | Volumes `rabbitmq_data`, `postgresql_data`, `ollama_data`, `loki_data`, `alloy_data`, `grafana_data` | Stack data (persistent) |
 
 ## Network
@@ -87,6 +98,7 @@ MagicBox from pinned bases (checked 2026-10-29).
 | 22 | TCP | SSH | `magicbox_lan_cidr` |
 | 9443 | TCP | Portainer HTTPS | `magicbox_lan_cidr` |
 | 5353 | UDP | mDNS (Avahi) | `magicbox_lan_cidr` |
+| 80, 443 | TCP | Kong API gateway (HTTP redirect, HTTPS) | `magicbox_lan_cidr` (ufw) |
 | 3000 | TCP | Grafana HTTPS | `magicbox_lan_cidr` (DOCKER-USER) |
 | 5672, 15672 | TCP | RabbitMQ AMQP, management UI | `magicbox_lan_cidr` (DOCKER-USER) |
 | 5432 | TCP | PostgreSQL | `magicbox_lan_cidr` (DOCKER-USER) |

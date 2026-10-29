@@ -1,0 +1,21 @@
+---
+- name: Create the RabbitMQ configuration directory
+  ansible.builtin.file:
+    path: "{{ stacks_base_dir }}/rabbitmq"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the RabbitMQ configuration file
+  ansible.builtin.template:
+    src: rabbitmq/magicbox.conf.j2
+    dest: "{{ stacks_base_dir }}/rabbitmq/magicbox.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  register: stacks_rabbitmq_config
+
+- name: Derive a configuration revision that redeploys RabbitMQ when the file changes
+  ansible.builtin.set_fact:
+    stacks_config_revision: "{{ stacks_rabbitmq_config.checksum | hash('sha256') | truncate(16, true, '') }}"
