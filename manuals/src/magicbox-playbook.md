@@ -17,7 +17,7 @@ community.general 13.5.0, community.docker 5.4.0, community.crypto 3.5.1.
 | Group | `magicbox` |
 | Project policy | `inventory/group_vars/magicbox/main.yml` |
 | Secrets | `inventory/group_vars/magicbox/vault.yml` (ansible-vault, git-ignored) |
-| Apps registry | `apps/registry.yml` (`magicbox_apps`), loaded by `api-gateway.yml` and `apps.yml` |
+| Apps registry | `inventory/group_vars/magicbox/apps.yml` (`magicbox_apps`, git-ignored; template `inventory/apps.example.yml`) |
 | Collections | `requirements.yml`, installed to `.ansible/collections` |
 | Result | Portainer CE at `https://magicbox.local:9443/` with environment `homelab`; default stacks; optional gateway at `https://magicbox.local/`; LAN only |
 
@@ -37,8 +37,8 @@ Portainer*, that runs the `stacks` role with `stacks_enabled: [jenkins]`.
 through Portainer*, that runs the `stacks` role with `stacks_enabled: [kong]`.
 
 `playbooks/apps.yml` has one play, *Register the apps in the API gateway
-(Kong)*: the same Kong deployment plus a report of the registered apps
-(`tasks/apps_report.yml`). Both playbooks load `apps/registry.yml`.
+(Kong) and in Jenkins*: the same Kong deployment, then the app jobs
+(`tasks/apps_jenkins.yml`) and a report (`tasks/apps_report.yml`).
 
 `playbooks/update.yml` has one play, *Update MagicBox packages*, that runs the
 `os_update` role. It needs the vault password only for `vault_become_password`.
@@ -123,7 +123,7 @@ Defined in `inventory/hosts.yml` (environment facts) or
 | `vault_portainer_admin_password` | required (vault) | At least 12 characters; in `vault.yml` only. |
 | `vault_postgresql_password`, `vault_rabbitmq_password`, `vault_grafana_admin_password` | required for the matching stack (vault) | At least 12 characters each. |
 | `vault_jenkins_admin_password`, `vault_jenkins_github_token`, `vault_jenkins_portainer_token` | Jenkins stack (vault) | Admin password (12+ characters) required; tokens optional. |
-| `magicbox_apps` | `apps/registry.yml` | Apps (ADR-0016): `name` (Portainer stack, container, URL path `/<name>`), `port` (host port on `127.0.0.1`, 18000-18999), `repo` (documentation). |
+| `magicbox_apps` | `[]` (`inventory/group_vars/magicbox/apps.yml`) | Apps (ADR-0016, ADR-0017): `name` (Jenkins job, Portainer stack, container, URL path `/<name>`), `port` (host port on `127.0.0.1`, 18000-18999), `repo` (`https://github.com/<owner>/<repository>`). Maintained by `tools/new_app.py`. |
 | `vault_kong_ollama_api_key` | required for the Kong stack (vault) | At least 12 characters; API key for `https://magicbox.local/ollama/` (header or query parameter `apikey`). |
 
 ## 5. Role `preflight`
@@ -359,7 +359,7 @@ redeploy when they change.
 | `stacks_jenkins_agent_base_image` | `jenkins/ssh-agent:9.3.1-jdk21` | Base of the agent image. |
 | `stacks_jenkins_docker_cli_image` | `docker:29.9.2-cli` | Source of the Docker CLI and plugins copied into the agent. |
 | `stacks_jenkins_uv_image` | `ghcr.io/astral-sh/uv:0.13.6` | Source of `uv` copied into the agent. |
-| `stacks_jenkins_plugins` | 10 plugins, pinned | Plugins baked into the controller image (name: version). |
+| `stacks_jenkins_plugins` | 11 plugins, pinned (incl. `job-dsl` for the app jobs) | Plugins baked into the controller image (name: version). |
 | `stacks_jenkins_port` | `8443` | Host port for the Jenkins UI (HTTPS, MagicBox certificate). |
 | `stacks_jenkins_heap` | `1g` | Controller JVM heap (`-Xmx`). |
 | `stacks_jenkins_memory_limit` | `2g` | Controller container memory limit. |
@@ -369,6 +369,8 @@ redeploy when they change.
 | `stacks_jenkins_github_user` | `""` | GitHub user name stored with the token (credential `github`). |
 | `stacks_jenkins_github_token` | `{{ vault_jenkins_github_token }}` | Optional; becomes credential `github`. |
 | `stacks_jenkins_portainer_token` | `{{ vault_jenkins_portainer_token }}` | Optional; becomes credential `portainer-api-token`. |
+| `stacks_jenkins_scan_interval` | `5m` | Branch scan (GitHub polling) interval of the app jobs. |
+| `stacks_apps_dir` | `/opt/magicbox/apps` | Host directory of `apps.json` (app name -> port), read by the app pipelines. |
 | `stacks_kong_image` | `kong:3.9.4` | Kong OSS image (last open-source line, ADR-0015). |
 | `stacks_kong_http_port` | `80` | Host port for HTTP; only redirects (301) to HTTPS. Keep in `firewall_lan_tcp_ports`. |
 | `stacks_kong_https_port` | `443` | Host port for HTTPS (MagicBox certificate). Keep in `firewall_lan_tcp_ports`. |
@@ -420,7 +422,7 @@ status on `127.0.0.1:8100`, Kong Manager off.
 | `/grafana` | Grafana 3000 (HTTPS, `serve_from_sub_path`) | kept | Grafana login |
 | `/rabbitmq` | RabbitMQ 15672 (`management.path_prefix`) | kept | RabbitMQ login |
 | `/ollama/` | Ollama 11434 (API, no UI) | stripped | header/query `apikey` = `vault_kong_ollama_api_key` |
-| `/<name>` (each app in `apps/registry.yml`) | app `<port>` (HTTP) | stripped | app's own |
+| `/<name>` (each app in `magicbox_apps`) | app `<port>` (HTTP) | stripped | app's own |
 
 Verification: every route whose container exists answers 200 through
 `https://magicbox.local/` with the MagicBox CA (Ollama with the key);
@@ -428,11 +430,19 @@ Verification: every route whose container exists answers 200 through
 registry assertions: unique names (lowercase, digits, hyphens, not a built-in
 route) and unique ports outside `stacks_reserved_ports`.
 
-**Apps (`make apps`, ADR-0016).** Each app is deployed by its own Jenkins
-pipeline (Portainer stack `<name>`, image `magicbox/<name>:<commit>` built on
-MagicBox, `127.0.0.1:<port>`). `make apps` adds the routes, checks those of
-deployed apps and lists each app as `deployed` or `registered, not deployed
-yet`. Removing an app from the registry removes its route, not its stack.
+**Apps (`make apps`, ADR-0016, ADR-0017).** In order: registry assertions and
+Kong routes (above); Jenkins must run with `CASC_JENKINS_CONFIG=/etc/jenkins/casc`
+(else "run `make ci-cd` first"); `/opt/magicbox/apps/apps.json`;
+`casc/apps.yaml` with one Job DSL `multibranchPipelineJob` per app (GitHub
+source, credential `github`, all branches, no pull requests, scan every
+`stacks_jenkins_scan_interval`); JCasC reload (crumb + admin login, no
+restart) when the file changed or a job is missing; every job exists; first
+scan of new jobs; report `deployed` / `registered, not deployed yet`.
+Each app's `Jenkinsfile` (template) takes the app name from the job name,
+reads its port from `apps.json`, and deploys the Portainer stack `<name>`
+(image `magicbox/<name>:<commit>`, `127.0.0.1:<port>`). Removing an app from
+the registry removes its route and port, not its job or stack; job changes
+in the UI are overwritten.
 
 **Status.** `make status` (`playbooks/status.yml`, `tasks/status.yml`) changes
 nothing: it lists each image of the enabled stacks as OK or MISSING and each

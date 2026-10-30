@@ -1,0 +1,103 @@
+// CI/CD on the MagicBox Jenkins. The job is created by `make apps` from the
+// MagicBox apps registry; its name is the app name (stack, container, URL path).
+// Every branch: lint + unit tests. Branch main only: build the image on
+// MagicBox, deploy the Portainer stack, check the new container is healthy.
+pipeline {
+  agent { label 'docker' }
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  stages {
+    stage('Prepare') {
+      steps {
+        script {
+          // Multibranch: JOB_NAME is "<app>/<branch>".
+          env.APP = env.JOB_NAME.split('/')[0]
+          env.TAG = sh(script: 'git rev-parse --short=12 HEAD', returnStdout: true).trim()
+          env.IMAGE = "magicbox/${env.APP}:${env.TAG}"
+          env.CI_IMAGE = "magicbox/${env.APP}-ci:${env.TAG}"
+        }
+        // The agent drives the MagicBox Docker engine: workspace bind mounts would
+        // point at host paths, so lint and tests run in an image built from the repo.
+        sh 'docker build --target ci -t "$CI_IMAGE" .'
+      }
+    }
+
+    stage('Lint') {
+      steps {
+        sh 'docker run --rm "$CI_IMAGE" sh -c "ruff check . && ruff format --check ."'
+      }
+    }
+
+    stage('Test') {
+      steps {
+        sh 'docker run --rm "$CI_IMAGE" pytest -q'
+      }
+    }
+
+    stage('Build') {
+      when { branch 'main' }
+      steps {
+        sh 'docker build -t "$IMAGE" .'
+      }
+    }
+
+    stage('Deploy') {
+      when { branch 'main' }
+      steps {
+        withCredentials([string(credentialsId: 'portainer-api-token', variable: 'PORTAINER_TOKEN')]) {
+          // Host network + loopback: ufw admits Portainer (9443) only from the LAN.
+          // The host port comes from the apps registry written by `make apps`.
+          sh '''
+            docker run --rm --network host --add-host magicbox.local:127.0.0.1 \
+              -v /opt/magicbox/portainer/certs/ca.crt:/run/magicbox-ca.crt:ro \
+              -v /opt/magicbox/apps:/run/magicbox-apps:ro \
+              -e PORTAINER_TOKEN -e APP_NAME="$APP" -e IMAGE_TAG="$TAG" \
+              "$CI_IMAGE" python deploy/portainer_deploy.py
+          '''
+        }
+      }
+    }
+
+    stage('Verify') {
+      when { branch 'main' }
+      steps {
+        sh '''
+          for i in $(seq 1 30); do
+            image=$(docker inspect -f '{{.Config.Image}}' "$APP" 2>/dev/null || true)
+            health=$(docker inspect -f '{{.State.Health.Status}}' "$APP" 2>/dev/null || true)
+            if [ "$image" = "$IMAGE" ] && [ "$health" = healthy ]; then
+              echo "$APP is running $IMAGE: https://magicbox.local/$APP"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "$APP did not become healthy with $IMAGE (image: $image, health: $health)"
+          docker logs --tail 50 "$APP" || true
+          exit 1
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      sh 'docker rmi "$CI_IMAGE" || true'
+    }
+    success {
+      script {
+        if (env.BRANCH_NAME == 'main') {
+          // Keep only the deployed image; older tags are no longer used by the stack.
+          sh '''
+            docker images "magicbox/$APP" --format '{{.Tag}}' | grep -vx "$TAG" \
+              | xargs -r -I{} docker rmi "magicbox/$APP:{}" || true
+          '''
+        }
+      }
+    }
+  }
+}

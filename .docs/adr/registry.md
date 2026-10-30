@@ -22,4 +22,5 @@ Consequences, then list it here and in [CLAUDE.md](../../CLAUDE.md).
 | [ADR-0013](adr-0013.md) | Log collection with Grafana Alloy instead of Promtail | Accepted |
 | [ADR-0014](adr-0014.md) | Jenkins on MagicBox for CI/CD, polling GitHub | Accepted |
 | [ADR-0015](adr-0015.md) | Kong API gateway with path-based routes | Accepted |
-| [ADR-0016](adr-0016.md) | Apps deployed by Jenkins and registered in the API gateway | Accepted |
+| [ADR-0016](adr-0016.md) | Apps deployed by Jenkins and registered in the API gateway | Accepted (amended by ADR-0017) |
+| [ADR-0017](adr-0017.md) | App jobs and ports from a git-ignored apps registry | Accepted |

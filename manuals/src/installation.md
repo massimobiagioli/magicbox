@@ -242,25 +242,28 @@ controller$ curl -s -o /dev/null -w '%{http_code}\n' https://magicbox.local/olla
 Rotate the key: change it with `make vault-edit`, run `make api-gateway`,
 update the clients.
 
-### 4.3 Apps (Jenkins deploy, gateway route)
+### 4.3 Apps (Jenkins jobs, gateway routes)
 
-Needs 4.1 (with `portainer-api-token`) and 4.2. Example: `magicbox-tester-app`.
+Needs 4.1 (credentials `github` and `portainer-api-token`) and 4.2. New app:
+`manuals/how-to-create-new-app.pdf`.
 
-- [ ] `apps/registry.yml`: entry with `name` (URL `/<name>`) and `port`
-      (18000-18999, same as `127.0.0.1:<port>` in the app's `deploy/stack.yml`).
+```text
+controller$ make ci-cd             # once after upgrading: Job DSL plugin
+controller$ cp inventory/apps.example.yml inventory/group_vars/magicbox/apps.yml   # if missing
+```
+
+- [ ] `inventory/group_vars/magicbox/apps.yml` (git-ignored): one entry per
+      app with `name`, `port` (18000-18999), `repo` (GitHub HTTPS URL).
+- [ ] The GitHub token (4.1) can read every `repo` listed.
 
 ```text
 controller$ make apps
 ```
 
-- [ ] Output lists the app as `registered, not deployed yet`.
-- [ ] Jenkins > New Item > Multibranch Pipeline `<repo>`: Branch source
-      GitHub, credential `github`, repository URL; Scan triggers:
-      *Periodically, interval 5 minutes*.
-- [ ] Push to `main`: within 5 minutes the build runs Lint, Test, Build,
-      Deploy, Verify (green).
-- [ ] Portainer > Stacks shows `<name>`; `https://magicbox.local/<name>` opens.
-- [ ] `make apps` again: the app is `deployed` and its route check passes.
+- [ ] Jenkins shows one job per app; new jobs start their first scan.
+- [ ] Each app's `main` build runs Lint, Test, Build, Deploy, Verify (green);
+      `https://magicbox.local/<name>` opens.
+- [ ] `make apps` again: every app `deployed`, `changed=0`.
 
 ## 5. Verification
 
@@ -355,7 +358,9 @@ renewed automatically by any playbook run within 30 days of expiry.
 | Jenkins login fails | Password changed in the UI is reset at start: use `vault_jenkins_admin_password` |
 | `make api-gateway`: "ufw does not allow TCP port" | Run `make deploy` first |
 | App build: Deploy fails with HTTP 401 | `vault_jenkins_portainer_token` missing or expired: 4.1, then `make ci-cd` |
-| App URL returns 404 | App not in `apps/registry.yml` or `make apps` not run |
+| App URL returns 404 | App not in the apps registry or `make apps` not run |
+| `make apps`: "run `make ci-cd` first" | Jenkins predates the apps support: `make ci-cd` |
+| App build: "not in the MagicBox apps registry" | Add it to `inventory/group_vars/magicbox/apps.yml`, `make apps` |
 | App URL returns 502 | App not deployed yet or wrong `port`: Jenkins build log; `sudo docker ps` |
 | Gateway route returns 502 | Service not running: `make status`; Jenkins needs `make ci-cd` |
 | Gateway `/ollama/` returns 401 | Send header `apikey: <vault_kong_ollama_api_key>` |

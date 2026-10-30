@@ -1,0 +1,17 @@
+---
+# Template for inventory/group_vars/magicbox/apps.yml (git-ignored, loaded by
+# Ansible for every playbook): the MagicBox apps registry (ADR-0016, ADR-0017).
+# `uv run tools/new_app.py <name>` creates an app and adds its entry here;
+# `make apps` then adds the Kong route https://magicbox.local/<name> and the
+# Jenkins Multibranch Pipeline <name>.
+#
+#   name: Jenkins job, Portainer stack, container and URL path (/<name>).
+#         Lowercase letters, digits and hyphens.
+#   port: host port published on 127.0.0.1 only (18000-18999), read by the
+#         app's pipeline from MagicBox; nothing to set in the app repository.
+#   repo: GitHub repository HTTPS URL (the Jenkins credential `github` must
+#         be able to read it).
+magicbox_apps:
+  - name: tester-app
+    port: 18001
+    repo: https://github.com/CHANGE_ME/magicbox-tester-app

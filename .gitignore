@@ -16,6 +16,7 @@ inventory/hosts.yml
 inventory/vault.yml
 inventory/host_vars/
 inventory/group_vars/magicbox/vault.yml
+inventory/group_vars/magicbox/apps.yml
 .vault_pass*
 *.vault_pass
 *.pem

@@ -74,14 +74,14 @@ Docker Hub on 2026-10-29.
 |-----------|-------|------------|-----------|
 | Kong Gateway OSS (DB-less) | `kong:3.9.4` | 80 (redirect), 443 (HTTPS, MagicBox CA), host networking | Single entry point `https://magicbox.local/<service>/`; API key for Ollama |
 
-## Apps (apps/registry.yml)
+## Apps (inventory/group_vars/magicbox/apps.yml, git-ignored)
 
-Deployed by their own Jenkins pipelines as Portainer stacks; routed by Kong
-(`make apps`, ADR-0016).
+Deployed by their own Jenkins pipelines (jobs created by `make apps` with
+Job DSL) as Portainer stacks; routed by Kong (ADR-0016, ADR-0017).
 
 | App | Image | Port | URL |
 |-----|-------|------|-----|
-| tester-app | `magicbox/tester-app:<commit>` (built on MagicBox, `python:3.15.2-slim-trixie`) | `127.0.0.1:18001` -> 3000 | `https://magicbox.local/tester-app` |
+| tester-app | `magicbox/tester-app:<commit>` (built on MagicBox, `python:3.15.2-slim-trixie`) | `127.0.0.1:18001` -> 3000 (port from the registry) | `https://magicbox.local/tester-app` |
 
 ## Runtime layout on MagicBox
 
@@ -97,6 +97,8 @@ Deployed by their own Jenkins pipelines as Portainer stacks; routed by Kong
 | `/etc/ufw/after.rules` (MAGICBOX DOCKER-USER block) | Limits Docker-published ports to the LAN (ADR-0012) |
 | `/opt/magicbox/stacks/observability/` | Loki and Alloy configs, Grafana data source, Grafana TLS copy |
 | `/opt/magicbox/stacks/rabbitmq/magicbox.conf` | RabbitMQ management path prefix |
+| `/opt/magicbox/apps/apps.json` | App name -> host port, written by `make apps`, read by the app pipelines |
+| `/opt/magicbox/stacks/jenkins/casc/apps.yaml` | Job DSL definitions of the app jobs (JCasC), written by `make apps` |
 | `/opt/magicbox/stacks/kong/` | Kong declarative config (with the API key, root 0400), TLS copy |
 | Volumes `rabbitmq_data`, `postgresql_data`, `ollama_data`, `loki_data`, `alloy_data`, `grafana_data` | Stack data (persistent) |
 

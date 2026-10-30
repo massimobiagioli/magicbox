@@ -1,0 +1,139 @@
+---
+# Jenkins side of `make apps` (ADR-0017): apps.json for the pipelines, one
+# Multibranch Pipeline per app (Job DSL through JCasC), first branch scan.
+- name: Read the Jenkins controller container
+  community.docker.docker_container_info:
+    name: jenkins
+  register: stacks_apps_jenkins
+
+- name: Assert Jenkins loads the app jobs (CI/CD stack up to date)
+  ansible.builtin.assert:
+    that:
+      - stacks_apps_jenkins.exists
+      - "'CASC_JENKINS_CONFIG=/etc/jenkins/casc' in stacks_apps_jenkins.container.Config.Env"
+    fail_msg: Jenkins is missing or older than the apps support; run `make ci-cd` first.
+    quiet: true
+
+- name: Create the apps directory
+  ansible.builtin.file:
+    path: "{{ stacks_apps_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Mounted read-only by the app pipelines' deploy step: name -> host port.
+- name: Write the apps registry for the pipelines
+  ansible.builtin.copy:
+    content: "{{ magicbox_apps | default([]) | items2dict(key_name='name', value_name='port') | to_nice_json(sort_keys=true) }}\n"
+    dest: "{{ stacks_apps_dir }}/apps.json"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Check which app jobs already exist in Jenkins
+  ansible.builtin.uri:
+    url: "{{ stacks_apps_jenkins_url }}/job/{{ item.name }}/api/json?tree=name"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    url_username: admin
+    url_password: "{{ stacks_jenkins_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  loop: "{{ magicbox_apps | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: stacks_apps_jobs_before
+  no_log: true
+
+- name: Write the Job DSL definitions of the app jobs (JCasC)
+  ansible.builtin.template:
+    src: apps/jenkins-jobs.yaml.j2
+    dest: "{{ stacks_base_dir }}/jenkins/casc/apps.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: stacks_apps_casc
+
+# Missing jobs are also (re)created when the file is unchanged, e.g. after a
+# job was deleted in the UI.
+- name: Apply the app jobs without restarting Jenkins (JCasC reload)
+  when: >-
+    stacks_apps_casc is changed
+    or stacks_apps_jobs_before.results | selectattr('status', '==', 404) | list | length > 0
+  block:
+    - name: Get a Jenkins CSRF crumb
+      ansible.builtin.uri:
+        url: "{{ stacks_apps_jenkins_url }}/crumbIssuer/api/json"
+        ca_path: "{{ magicbox_portainer_ca_cert }}"
+        url_username: admin
+        url_password: "{{ stacks_jenkins_admin_password }}"
+        force_basic_auth: true
+      register: stacks_apps_crumb
+      no_log: true
+
+    - name: Reload the Jenkins Configuration as Code
+      ansible.builtin.uri:
+        url: "{{ stacks_apps_jenkins_url }}/configuration-as-code/reload"
+        method: POST
+        ca_path: "{{ magicbox_portainer_ca_cert }}"
+        url_username: admin
+        url_password: "{{ stacks_jenkins_admin_password }}"
+        force_basic_auth: true
+        headers:
+          # Literal name: Ansible does not template dictionary keys.
+          Jenkins-Crumb: "{{ stacks_apps_crumb.json.crumb }}"
+          Cookie: "{{ stacks_apps_crumb.cookies_string }}"
+        status_code: [200, 302]
+        follow_redirects: none
+      changed_when: true
+      no_log: true
+
+- name: Check every app job exists
+  ansible.builtin.uri:
+    url: "{{ stacks_apps_jenkins_url }}/job/{{ item.name }}/api/json?tree=name"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    url_username: admin
+    url_password: "{{ stacks_jenkins_admin_password }}"
+    force_basic_auth: true
+  loop: "{{ magicbox_apps | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: stacks_apps_jobs_after
+  retries: 10
+  delay: 3
+  until: stacks_apps_jobs_after.status == 200
+  no_log: true
+
+# The first scan finds the branches with a Jenkinsfile and builds them; later
+# pushes are found by the periodic scan.
+- name: Start the first branch scan of new app jobs
+  when: stacks_apps_new_jobs | length > 0
+  vars:
+    stacks_apps_new_jobs: "{{ stacks_apps_jobs_before.results | selectattr('status', '==', 404) | map(attribute='item.name') | list }}"
+  block:
+    - name: Get a Jenkins CSRF crumb for the scan
+      ansible.builtin.uri:
+        url: "{{ stacks_apps_jenkins_url }}/crumbIssuer/api/json"
+        ca_path: "{{ magicbox_portainer_ca_cert }}"
+        url_username: admin
+        url_password: "{{ stacks_jenkins_admin_password }}"
+        force_basic_auth: true
+      register: stacks_apps_scan_crumb
+      no_log: true
+
+    - name: Scan the new app jobs now
+      ansible.builtin.uri:
+        url: "{{ stacks_apps_jenkins_url }}/job/{{ item }}/build?delay=0"
+        method: POST
+        ca_path: "{{ magicbox_portainer_ca_cert }}"
+        url_username: admin
+        url_password: "{{ stacks_jenkins_admin_password }}"
+        force_basic_auth: true
+        headers:
+          Jenkins-Crumb: "{{ stacks_apps_scan_crumb.json.crumb }}"
+          Cookie: "{{ stacks_apps_scan_crumb.cookies_string }}"
+        status_code: [200, 201, 302]
+        follow_redirects: none
+      loop: "{{ stacks_apps_new_jobs }}"
+      changed_when: true
+      no_log: true

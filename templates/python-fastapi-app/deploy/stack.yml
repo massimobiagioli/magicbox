@@ -1,0 +1,13 @@
+# Portainer stack deployed by the Jenkinsfile (deploy/portainer_deploy.py).
+# APP_NAME (Jenkins job = app name), IMAGE_TAG (commit) and APP_PORT (from the
+# MagicBox apps registry) are set by the pipeline. The image is built on
+# MagicBox, never pulled. Loopback only: reachable from the LAN through Kong at
+# https://magicbox.local/<app>.
+services:
+  app:
+    image: magicbox/${APP_NAME}:${IMAGE_TAG}
+    pull_policy: never
+    container_name: ${APP_NAME}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${APP_PORT}:8000"

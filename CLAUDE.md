@@ -33,7 +33,7 @@ computers at **https://magicbox.local:9443/**.
 - Significant decisions get a new sequential ADR in `.docs/adr/`, listed in the
   registry and here.
 - Every service with a web UI or HTTP API gets a route in the API gateway
-  (`stacks_kong_routes`) and its URL (gateway and direct port) in the
+  (`stacks_kong_routes`, or the apps registry for apps) and its URL (gateway and direct port) in the
   `README.md` "Addresses" table and the installation guide services table.
 - Report honestly: separate "verified on MagicBox", "verified in the test
   container" and "not executed". Never claim a remote deployment without access.
@@ -51,14 +51,15 @@ make verify
 make stacks          # default Portainer stacks
 make ci-cd           # CI/CD stack: Jenkins controller + SSH build agent
 make api-gateway     # API gateway stack: Kong, https://magicbox.local/<service>/
-make apps            # register apps/registry.yml in Kong (https://magicbox.local/<app>)
+uv run tools/new_app.py <name> [--create-repo]          # new app from the template + registry entry
+make apps            # apps registry -> Kong routes + Jenkins jobs (https://magicbox.local/<app>)
 make status          # read-only: stack images pulled, containers running/healthy
 make vault-edit      # edit the encrypted vault (creates it if missing)
 make update          # apt update + upgrade (EXTRA="-e os_update_reboot=true" reboots if needed)
 make test-container ARGS="--with-stacks"                   # includes stacks (~4 GB pulls)
 make test-container ARGS="--with-ci-cd"                    # includes the Jenkins stack
 make test-container ARGS="--with-api-gateway"              # includes the Kong stack
-make test-container ARGS="--with-api-gateway --with-apps"  # includes the app routes
+make test-container ARGS="--with-ci-cd --with-api-gateway --with-apps"  # includes app routes and jobs
 ```
 
 ## Layout
@@ -67,15 +68,15 @@ make test-container ARGS="--with-api-gateway --with-apps"  # includes the app ro
 - `playbooks/stacks.yml` - default Portainer stacks (RabbitMQ, PostgreSQL, Ollama, Grafana/Loki/Alloy)
 - `playbooks/ci-cd.yml` - CI/CD stack (Jenkins) via the `stacks` role
 - `playbooks/api-gateway.yml` - API gateway stack (Kong) via the `stacks` role
-- `playbooks/apps.yml` - registers the apps of `apps/registry.yml` in Kong
-- `apps/registry.yml` - apps registry: name (stack, container, URL path) and loopback port
+- `playbooks/apps.yml` - apps registry -> Kong routes, Jenkins jobs (Job DSL), `/opt/magicbox/apps/apps.json`
 - `playbooks/status.yml` - read-only stack status (images, containers)
 - `playbooks/update.yml` - OS package update (apt update + upgrade), optional reboot
 - `roles/` - `preflight`, `mdns`, `firewall`, `docker`, `portainer`, `portainer_init`, `stacks`, `os_update`
-- `inventory/` - `hosts.example.yml`, `vault.example.yml`, `group_vars/magicbox/main.yml`
+- `inventory/` - `hosts.example.yml`, `vault.example.yml`, `apps.example.yml`, `group_vars/magicbox/main.yml`;
+  git-ignored: `hosts.yml`, `group_vars/magicbox/vault.yml`, `group_vars/magicbox/apps.yml` (apps registry)
 - `tests/container/` - Dockerfile and inventory for the container test
 - `tools/` - project tools (below)
-- `templates/python-fastapi-app/` - FastAPI app template (Python 3.15, uv, `/health`, Dockerfile); see its [README](templates/python-fastapi-app/README.md)
+- `templates/python-fastapi-app/` - FastAPI app template (Python 3.15, uv, `/health`, Dockerfile, generic Jenkinsfile + `deploy/`); see its [README](templates/python-fastapi-app/README.md)
 - `samples/` - one app per subfolder, built from the template, using the default stacks; see [samples/README.md](samples/README.md)
 - `manuals/src/` - Markdown manual sources; `manuals/*.pdf` - generated PDFs
 - `.docs/` - constitution, principles, stack, ADRs
@@ -104,11 +105,13 @@ make test-container ARGS="--with-api-gateway --with-apps"  # includes the app ro
   - [ADR-0014](.docs/adr/adr-0014.md) - Jenkins on MagicBox for CI/CD, polling GitHub
   - [ADR-0015](.docs/adr/adr-0015.md) - Kong API gateway with path-based routes
   - [ADR-0016](.docs/adr/adr-0016.md) - Apps deployed by Jenkins and registered in the API gateway
+  - [ADR-0017](.docs/adr/adr-0017.md) - App jobs and ports from a git-ignored apps registry
 
 ## Manuals
 
 - [Installation guide (PDF)](manuals/installation.pdf) - source: [manuals/src/installation.md](manuals/src/installation.md)
 - [Playbook reference (PDF)](manuals/magicbox-playbook.pdf) - source: [manuals/src/magicbox-playbook.md](manuals/src/magicbox-playbook.md)
+- [How to create a new app (PDF)](manuals/how-to-create-new-app.pdf) - source: [manuals/src/how-to-create-new-app.md](manuals/src/how-to-create-new-app.md)
 
 Build dependencies: `uv` only. `make setup` installs `markdown==3.11.2` and
 `fpdf2==2.8.9` into `.venv`; `make manuals` (`uv run tools/build_manuals.py`)
@@ -120,4 +123,5 @@ produces deterministic PDFs.
 - [tools/check_docs.py](tools/check_docs.py) - broken links, this index, ADR numbering/sections/registry, playbook-reference coverage, PDFs present
 - [tools/check_secrets.py](tools/check_secrets.py) - vault file encrypted; no plaintext `vault_*` values or private keys tracked
 - [tools/idempotency_check.py](tools/idempotency_check.py) - runs `ansible-playbook` twice, fails if the second run changes anything
-- [tools/container_test.py](tools/container_test.py) - disposable systemd container: full converge + idempotency check (`--with-stacks` adds the stacks playbook, `--with-ci-cd` the Jenkins playbook, `--with-api-gateway` the Kong playbook, `--with-apps` the apps playbook)
+- [tools/new_app.py](tools/new_app.py) - new app from the template: rename, `uv lock`, first commit, apps registry entry (first free port), optional private GitHub repo (`--create-repo`)
+- [tools/container_test.py](tools/container_test.py) - disposable systemd container: full converge + idempotency check (`--with-stacks` adds the stacks playbook, `--with-ci-cd` the Jenkins playbook, `--with-api-gateway` the Kong playbook, `--with-apps` the apps playbook, needs the previous two)

@@ -1,21 +1,26 @@
 ---
-# Registers the apps of apps/registry.yml in the API gateway (Kong): each app
-# gets https://magicbox.local/<name> -> 127.0.0.1:<port> (ADR-0016). The apps
-# themselves are deployed by their Jenkins pipelines. Requires
-# playbooks/api-gateway.yml prerequisites (site.yml, vault_kong_ollama_api_key).
+# Registers the apps of the registry (magicbox_apps in the git-ignored
+# inventory/group_vars/magicbox/apps.yml; template inventory/apps.example.yml):
+# Kong route https://magicbox.local/<name> -> 127.0.0.1:<port> and Jenkins
+# Multibranch Pipeline <name> (ADR-0016, ADR-0017). The pipelines deploy the
+# apps. Requires make ci-cd and make api-gateway.
 # Run: make apps
-- name: Register the apps in the API gateway (Kong)
+- name: Register the apps in the API gateway (Kong) and in Jenkins
   hosts: magicbox
   become: true
   gather_facts: false
-  vars_files:
-    - ../apps/registry.yml
   vars:
     stacks_enabled: [kong]
   roles:
     - role: stacks
       tags: [apps]
   tasks:
+    - name: Create the Jenkins jobs of the apps
+      ansible.builtin.include_role:
+        name: stacks
+        tasks_from: apps_jenkins
+      tags: [apps]
+
     - name: Report the registered apps
       ansible.builtin.include_role:
         name: stacks

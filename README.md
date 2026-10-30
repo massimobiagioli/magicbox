@@ -15,14 +15,14 @@ make deploy EXTRA="-e magicbox_confirm_destructive=true"
 make stacks
 make ci-cd          # optional: Jenkins
 make api-gateway    # optional: Kong, https://magicbox.local/<service>/
-make apps           # register apps/registry.yml in Kong
+make apps           # apps registry -> Kong routes + Jenkins jobs
 ```
 
 ## Addresses
 
 From a LAN computer that trusts the MagicBox CA (installation guide, section 6).
 Gateway URLs need `make api-gateway`; Jenkins needs `make ci-cd`; apps
-(`apps/registry.yml`) need `make apps` and their Jenkins pipeline.
+(registry `inventory/group_vars/magicbox/apps.yml`, git-ignored) need `make apps`.
 
 | Service | Via the gateway (Kong) | Direct | Login |
 |---------|------------------------|--------|-------|
@@ -31,7 +31,7 @@ Gateway URLs need `make api-gateway`; Jenkins needs `make ci-cd`; apps
 | Grafana | `https://magicbox.local/grafana/` | `https://magicbox.local:3000/grafana/` | `admin` / `vault_grafana_admin_password` |
 | RabbitMQ UI | `https://magicbox.local/rabbitmq/` | `http://magicbox.local:15672/rabbitmq/` | `magicbox` / `vault_rabbitmq_password` |
 | Ollama API (no UI) | `https://magicbox.local/ollama/` | `http://magicbox.local:11434/` | gateway: header `apikey: <vault_kong_ollama_api_key>`; direct: none |
-| Tester App | `https://magicbox.local/tester-app` | - (loopback `127.0.0.1:18001`) | none |
+| Tester App | `https://magicbox.local/tester-app` | - (loopback, port from the apps registry) | none |
 | RabbitMQ AMQP | - | `amqp://magicbox.local:5672` | as RabbitMQ UI |
 | PostgreSQL | - | `magicbox.local:5432`, database `magicbox` | `magicbox` / `vault_postgresql_password` |
 
@@ -42,4 +42,5 @@ Gateway URLs need `make api-gateway`; Jenkins needs `make ci-cd`; apps
 
 - [Installation guide](manuals/installation.pdf), which starts with the Mini PC checklist
 - [Playbook reference](manuals/magicbox-playbook.pdf)
+- [How to create a new app](manuals/how-to-create-new-app.pdf): `tools/new_app.py` -> `make apps`
 - [Project instructions and full index](CLAUDE.md)

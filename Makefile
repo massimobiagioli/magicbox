@@ -39,7 +39,7 @@ manuals-check: ## Rebuild manuals and fail if committed PDFs were stale
 
 check: lint secrets-check manuals docs-check ## All local checks (no target host needed)
 
-test-container: ## Converge + idempotency test in a disposable systemd container (ARGS="--with-stacks --with-ci-cd --with-api-gateway --with-apps")
+test-container: ## Converge + idempotency test in a disposable systemd container (ARGS="--with-stacks --with-ci-cd --with-api-gateway --with-apps"; --with-apps needs the other two)
 	$(RUN) tools/container_test.py $(ARGS)
 
 deploy: ## Apply the playbook to MagicBox (pass EXTRA="-e magicbox_confirm_destructive=true" on first run)
@@ -60,7 +60,7 @@ ci-cd: ## Deploy the CI/CD stack (Jenkins) to MagicBox (run deploy first)
 api-gateway: ## Deploy the API gateway stack (Kong) to MagicBox (run deploy first)
 	$(RUN) ansible-playbook playbooks/api-gateway.yml --ask-vault-pass $(BECOME) $(EXTRA)
 
-apps: ## Register the apps of apps/registry.yml in the API gateway (https://magicbox.local/<name>)
+apps: ## Apps registry (inventory/group_vars/magicbox/apps.yml) -> Kong routes + Jenkins jobs (run ci-cd, api-gateway first)
 	$(RUN) ansible-playbook playbooks/apps.yml --ask-vault-pass $(BECOME) $(EXTRA)
 
 status: ## Read-only: are stack images pulled and containers running/healthy on MagicBox?

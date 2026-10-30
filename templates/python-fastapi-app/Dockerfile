@@ -12,6 +12,15 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-install-project
 COPY app ./app
 
+# CI stage (Jenkinsfile): dev dependencies, tests, lint config and the deploy
+# script. Never deployed; the runtime stage below does not depend on it.
+FROM build AS ci
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-install-project
+COPY tests ./tests
+COPY deploy ./deploy
+ENV PATH="/app/.venv/bin:$PATH"
+
 # Runtime stage: same Python, no uv, non-root user.
 FROM python:3.15.2-slim-trixie
 RUN useradd --system --uid 10001 --no-create-home app

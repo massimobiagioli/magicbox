@@ -11,7 +11,8 @@ the container unless --keep is given. With --with-stacks it then runs
 playbooks/stacks.yml twice as well (pulls about 4 GB of images); with
 --with-ci-cd it runs playbooks/ci-cd.yml twice (builds the Jenkins images);
 with --with-api-gateway it runs playbooks/api-gateway.yml twice (Kong); with
---with-apps it runs playbooks/apps.yml twice (app routes in Kong).
+--with-apps (needs --with-ci-cd --with-api-gateway) it runs playbooks/apps.yml
+twice (app routes in Kong, app jobs in Jenkins).
 Requires a local Docker daemon.
 
 The container differs from MagicBox (architecture, nested Docker, no real LAN),
@@ -41,6 +42,8 @@ def main() -> None:
     with_ci_cd = "--with-ci-cd" in sys.argv[1:]
     with_api_gateway = "--with-api-gateway" in sys.argv[1:]
     with_apps = "--with-apps" in sys.argv[1:]
+    if with_apps and not (with_ci_cd and with_api_gateway):
+        sys.exit("--with-apps needs --with-ci-cd and --with-api-gateway (Jenkins and Kong)")
     sh("docker", "build", "-q", "-t", IMAGE, str(ROOT / "tests/container"))
     sh("docker", "rm", "-f", NAME, check=False)
     sh("docker", "volume", "rm", "-f", f"{NAME}-docker", f"{NAME}-containerd", check=False)

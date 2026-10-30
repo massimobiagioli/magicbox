@@ -18,19 +18,20 @@
     - "{{ stacks_kong_http_port }}"
     - "{{ stacks_kong_https_port }}"
 
-- name: Assert the apps registry is valid (apps/registry.yml)
+- name: Assert the apps registry is valid (magicbox_apps, inventory/group_vars/magicbox/apps.yml)
   ansible.builtin.assert:
     that:
       - item.name is match('^[a-z0-9][a-z0-9-]*$')
       - item.name not in (stacks_kong_routes | map(attribute='name'))
       - item.port | int >= 1024 and item.port | int <= 65535
+      - item.repo | default('') is match('^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
       - item.port | int not in stacks_reserved_ports
       - magicbox_apps | selectattr('name', '==', item.name) | list | length == 1
       - magicbox_apps | map(attribute='port') | map('int') | select('==', item.port | int) | list | length == 1
     fail_msg: >-
       App '{{ item.name }}': the name must be unique, lowercase letters, digits and hyphens,
       and not a built-in route; the port must be unique, 1024-65535 and not one of
-      {{ stacks_reserved_ports }}.
+      {{ stacks_reserved_ports }}; repo must be https://github.com/<owner>/<repository>.
     quiet: true
   loop: "{{ magicbox_apps | default([]) }}"
   loop_control:
