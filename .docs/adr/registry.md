@@ -25,3 +25,4 @@ Consequences, then list it here and in [CLAUDE.md](../../CLAUDE.md).
 | [ADR-0016](adr-0016.md) | Apps deployed by Jenkins and registered in the API gateway | Accepted (amended by ADR-0017) |
 | [ADR-0017](adr-0017.md) | App jobs and ports from a git-ignored apps registry | Accepted |
 | [ADR-0018](adr-0018.md) | RustFS object storage with the console on its own port | Accepted |
+| [ADR-0019](adr-0019.md) | Open WebUI in the Ollama stack, on its own HTTPS port | Accepted |

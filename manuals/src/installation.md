@@ -2,7 +2,7 @@
 
 Goal: Portainer reachable from the LAN at **https://magicbox.local:9443/**,
 with the `homelab` environment and the default stacks (RabbitMQ, PostgreSQL,
-Ollama, Grafana + Loki + Alloy).
+Ollama + Open WebUI, Grafana + Loki + Alloy).
 MagicBox has no fixed IP: it is always reached as `magicbox.local` (mDNS via
 Avahi).
 `magicbox$` = on the Mini PC, `controller$` = on your workstation in this
@@ -126,11 +126,12 @@ controller$ make vault-edit          # creates the encrypted vault on first use
       `ansible_ssh_private_key_file: ~/.ssh/magicbox/id_ed25519`.
 - [ ] Ubuntu 26.04: uncomment `ansible_become_exe: sudo.ws`.
 - [ ] In `vault.yml` (see `inventory/vault.example.yml`):
-      `vault_become_password` (sudo password of `ansible_user`) and four
+      `vault_become_password` (sudo password of `ansible_user`) and five
       different passwords of 12+ characters: `vault_portainer_admin_password`,
       `vault_postgresql_password`, `vault_rabbitmq_password`,
-      `vault_grafana_admin_password`. Keep the vault password in your password
-      manager.
+      `vault_grafana_admin_password`, `vault_openwebui_admin_password`; plus
+      `vault_openwebui_secret_key` (`openssl rand -hex 32`). Keep the vault
+      password in your password manager.
 
 ```text
 controller$ make secrets-check
@@ -150,13 +151,14 @@ because it enables the firewall. The CA certificate is saved to
 `artifacts/magicbox-local-ca.crt`. Portainer is initialised with the
 `homelab` environment.
 
-Then pull the stack images on MagicBox (about 4 GB; shows progress and
+Then pull the stack images on MagicBox (about 5 GB; shows progress and
 resumes after an interruption). Versions match `roles/stacks/defaults/main.yml`:
 
 ```text
 magicbox$ sudo docker pull rabbitmq:4.3.7-management
 magicbox$ sudo docker pull postgres:18.6
 magicbox$ sudo docker pull ollama/ollama:0.40.12
+magicbox$ sudo docker pull ghcr.io/open-webui/open-webui:v0.12.5-slim
 magicbox$ sudo docker pull grafana/grafana:13.2.5
 magicbox$ sudo docker pull grafana/loki:3.7.9
 magicbox$ sudo docker pull grafana/alloy:v1.21.2
@@ -169,6 +171,10 @@ Deploy the default stacks:
 ```text
 controller$ make stacks
 ```
+
+- [ ] Open WebUI: `https://magicbox.local:8444/` opens; log in as
+      `admin@magicbox.local` / `vault_openwebui_admin_password`; with a model
+      pulled (`stacks_ollama_models`), a chat answers.
 
 Deploy only some stacks:
 
@@ -228,6 +234,7 @@ controller$ make api-gateway
 - [ ] `https://magicbox.local/` opens Portainer (redirect to `/portainer/`).
 - [ ] `https://magicbox.local/grafana`, `/rabbitmq`, `/jenkins` (if
       installed; with or without the final `/`) open their login page.
+- [ ] `https://magicbox.local/openwebui` redirects to Open WebUI (port 8444).
 - [ ] Ollama (API only, no UI) answers with the key, `401` without it:
 
 ```text
@@ -331,6 +338,7 @@ Services (from the LAN):
 | RustFS console (4.4) | `https://magicbox.local:9101/rustfs/console/` | `https://magicbox.local/rustfs` (redirect) | `vault_rustfs_access_key` / `vault_rustfs_secret_key` |
 | RustFS S3 API (4.4) | `https://magicbox.local:9100` (path-style, `us-east-1`) | - | same keys as the console |
 | PostgreSQL | `magicbox.local:5432`, database `magicbox` | - | `magicbox` / `vault_postgresql_password` |
+| Open WebUI | `https://magicbox.local:8444/` | `https://magicbox.local/openwebui` (redirect) | `admin@magicbox.local` / `vault_openwebui_admin_password` |
 | Ollama API | `http://magicbox.local:11434/` | `https://magicbox.local/ollama/` | direct: none (LAN only); gateway: header `apikey` |
 | Jenkins (if installed) | `https://magicbox.local:8443/jenkins/` | `https://magicbox.local/jenkins/` | `admin` / `vault_jenkins_admin_password` |
 | Tester App (4.3) | - | `https://magicbox.local/tester-app` | none |
@@ -446,7 +454,8 @@ magicbox$ sudo docker start portainer
 ```
 
 Stack data lives in the volumes `postgresql_data`, `rabbitmq_data`,
-`grafana_data`, `loki_data`, `ollama_data` and `rustfs_data` (buckets) under
+`grafana_data`, `loki_data`, `ollama_data`, `open_webui_data` (chats,
+users) and `rustfs_data` (buckets) under
 `/var/lib/docker/volumes/`.
 Stop the stack in Portainer before copying a volume. For PostgreSQL, prefer
 a logical dump:

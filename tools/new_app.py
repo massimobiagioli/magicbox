@@ -35,7 +35,7 @@ HOSTS = ROOT / "inventory" / "hosts.yml"
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 # Paths already routed by Kong (roles/stacks/vars/main.yml: stacks_kong_routes,
 # stacks_kong_port_redirects).
-BUILT_IN = {"portainer", "jenkins", "grafana", "rabbitmq", "ollama", "rustfs"}
+BUILT_IN = {"portainer", "jenkins", "grafana", "rabbitmq", "ollama", "rustfs", "openwebui"}
 FIRST_PORT, LAST_PORT = 18001, 18999
 REGISTRY_HEADER = """---
 # MagicBox apps registry (git-ignored; template: inventory/apps.example.yml).

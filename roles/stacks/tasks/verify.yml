@@ -60,6 +60,39 @@
     url: "http://127.0.0.1:{{ stacks_ollama_port }}/api/version"
   when: "'ollama' in stacks_enabled"
 
+- name: Check Open WebUI over HTTPS with the MagicBox CA, sign-up disabled
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_openwebui_port }}/api/config"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+  register: stacks_openwebui_config
+  retries: 20
+  delay: 3
+  until: stacks_openwebui_config.status == 200
+  failed_when: stacks_openwebui_config.json.features.enable_signup | default(true)
+  when: "'ollama' in stacks_enabled"
+
+- name: Log in to Open WebUI as the admin
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_openwebui_port }}/api/v1/auths/signin"
+    method: POST
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    body_format: json
+    body:
+      email: "{{ stacks_openwebui_admin_email }}"
+      password: "{{ stacks_openwebui_admin_password }}"
+  register: stacks_openwebui_login
+  when: "'ollama' in stacks_enabled"
+  no_log: true
+
+- name: Check Open WebUI reaches Ollama
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_openwebui_port }}/ollama/api/version"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers:
+      Authorization: "Bearer {{ stacks_openwebui_login.json.token }}"
+  when: "'ollama' in stacks_enabled"
+  no_log: true
+
 - name: Check Grafana over HTTPS with the MagicBox CA
   ansible.builtin.uri:
     url: "https://{{ magicbox_hostname }}.local:{{ stacks_grafana_port }}/grafana/api/health"

@@ -51,6 +51,7 @@ Image tags were checked on Docker Hub on 2026-10-28.
 | rabbitmq | `rabbitmq:4.3.7-management` | 5672 AMQP, 15672 UI (HTTP, `/rabbitmq/`) | Current 4.x with management plugin |
 | postgresql | `postgres:18.6` | 5432 | Newest major, supported until 2030-11-14 ("LTS" choice) |
 | ollama | `ollama/ollama:0.40.12` | 11434 (HTTP, no auth) | Local LLM runtime, CPU inference |
+| open-webui (stack `ollama`) | `ghcr.io/open-webui/open-webui:v0.12.5-slim` | 8444 (HTTPS, MagicBox CA) | Chat UI for Ollama; slim: no local RAG (ADR-0019) |
 | observability | `grafana/grafana:13.2.5` | 3000 (HTTPS, MagicBox CA, `/grafana/`) | Dashboards and log exploration |
 | observability | `grafana/loki:3.7.9` | internal only | Log store (filesystem, TSDB v13) |
 | observability | `grafana/alloy:v1.21.2` | internal only | Log collector; replaces Promtail, EOL 2026-03-02 (ADR-0013) |
@@ -110,7 +111,8 @@ Job DSL) as Portainer stacks; routed by Kong (ADR-0016, ADR-0017).
 | `/opt/magicbox/stacks/jenkins/casc/apps.yaml` | Job DSL definitions of the app jobs (JCasC), written by `make apps` |
 | `/opt/magicbox/stacks/kong/` | Kong declarative config (with the API key, root 0400), TLS copy |
 | `/opt/magicbox/stacks/rustfs/tls/` | RustFS TLS copy (UID 10001, 0400) |
-| Volumes `rabbitmq_data`, `postgresql_data`, `ollama_data`, `loki_data`, `alloy_data`, `grafana_data`, `rustfs_data` | Stack data (persistent) |
+| `/opt/magicbox/stacks/ollama/tls/` | Open WebUI TLS copy (root 0400) |
+| Volumes `rabbitmq_data`, `postgresql_data`, `ollama_data`, `open_webui_data`, `loki_data`, `alloy_data`, `grafana_data`, `rustfs_data` | Stack data (persistent) |
 
 ## Network
 
@@ -124,6 +126,7 @@ Job DSL) as Portainer stacks; routed by Kong (ADR-0016, ADR-0017).
 | 5672, 15672 | TCP | RabbitMQ AMQP, management UI | `magicbox_lan_cidr` (DOCKER-USER) |
 | 5432 | TCP | PostgreSQL | `magicbox_lan_cidr` (DOCKER-USER) |
 | 11434 | TCP | Ollama API | `magicbox_lan_cidr` (DOCKER-USER) |
+| 8444 | TCP | Open WebUI (HTTPS) | `magicbox_lan_cidr` (DOCKER-USER) |
 | 9100, 9101 | TCP | RustFS S3 API, console (HTTPS) | `magicbox_lan_cidr` (DOCKER-USER) |
 | 9000 | TCP | Portainer HTTP | disabled (`--http-disabled`) |
 | 8000 | TCP | Portainer Edge tunnel | blocked (unused) |

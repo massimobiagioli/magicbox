@@ -14,6 +14,9 @@ stacks_base_dir: /opt/magicbox/stacks
 stacks_rabbitmq_image: rabbitmq:4.3.7-management
 stacks_postgresql_image: postgres:18.6
 stacks_ollama_image: ollama/ollama:0.40.12
+# Open WebUI, slim variant: no local embedding/RAG stack (ADR-0019; checked on
+# GitHub releases 2026-10-30).
+stacks_openwebui_image: ghcr.io/open-webui/open-webui:v0.12.5-slim
 stacks_grafana_image: grafana/grafana:13.2.5
 stacks_loki_image: grafana/loki:3.7.9
 stacks_alloy_image: grafana/alloy:v1.21.2
@@ -24,6 +27,8 @@ stacks_rabbitmq_management_port: 15672
 stacks_postgresql_port: 5432
 stacks_ollama_port: 11434
 stacks_grafana_port: 3000
+# Open WebUI (HTTPS, MagicBox certificate); /openwebui on the gateway redirects here.
+stacks_openwebui_port: 8444
 
 # Credentials. Passwords come from the vault and are applied only when the
 # service initialises its data volume for the first time.
@@ -33,6 +38,12 @@ stacks_postgresql_user: magicbox
 stacks_postgresql_database: magicbox
 stacks_postgresql_password: "{{ vault_postgresql_password | default('') }}"
 stacks_grafana_admin_password: "{{ vault_grafana_admin_password | default('') }}"
+# Open WebUI admin, created on first start only (empty database); sign-up is
+# then disabled. The e-mail is only the login name.
+stacks_openwebui_admin_email: admin@magicbox.local
+stacks_openwebui_admin_password: "{{ vault_openwebui_admin_password | default('') }}"
+# Signs the Open WebUI sessions; changing it logs everyone out.
+stacks_openwebui_secret_key: "{{ vault_openwebui_secret_key | default('') }}"
 
 # Ollama models pulled after deployment (e.g. ["llama3.2:3b"]). Pulls can
 # take a long time and several GB of disk; models are never deleted.

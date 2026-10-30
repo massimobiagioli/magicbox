@@ -34,7 +34,7 @@ computers at **https://magicbox.local:9443/**.
   registry and here.
 - Every service with a web UI or HTTP API gets a route in the API gateway
   (`stacks_kong_routes`, or the apps registry for apps; a redirect in
-  `stacks_kong_port_redirects` when it cannot live under a path, ADR-0018)
+  `stacks_kong_port_redirects` when it cannot live under a path, ADR-0018/0019)
   and its URL (gateway and direct port) in the `README.md` "Addresses" table and the installation guide services table.
 - Report honestly: separate "verified on MagicBox", "verified in the test
   container" and "not executed". Never claim a remote deployment without access.
@@ -68,7 +68,7 @@ make test-container ARGS="--with-ci-cd --with-api-gateway --with-apps"  # includ
 ## Layout
 
 - `playbooks/site.yml` - host + Portainer (roles + controller verification play)
-- `playbooks/stacks.yml` - default Portainer stacks (RabbitMQ, PostgreSQL, Ollama, Grafana/Loki/Alloy)
+- `playbooks/stacks.yml` - default Portainer stacks (RabbitMQ, PostgreSQL, Ollama + Open WebUI, Grafana/Loki/Alloy)
 - `playbooks/ci-cd.yml` - CI/CD stack (Jenkins) via the `stacks` role
 - `playbooks/api-gateway.yml` - API gateway stack (Kong) via the `stacks` role
 - `playbooks/storage.yml` - object storage stack (RustFS, S3-compatible) via the `stacks` role
@@ -111,6 +111,7 @@ make test-container ARGS="--with-ci-cd --with-api-gateway --with-apps"  # includ
   - [ADR-0016](.docs/adr/adr-0016.md) - Apps deployed by Jenkins and registered in the API gateway
   - [ADR-0017](.docs/adr/adr-0017.md) - App jobs and ports from a git-ignored apps registry
   - [ADR-0018](.docs/adr/adr-0018.md) - RustFS object storage with the console on its own port
+  - [ADR-0019](.docs/adr/adr-0019.md) - Open WebUI in the Ollama stack, on its own HTTPS port
 
 ## Manuals
 

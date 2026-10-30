@@ -1,5 +1,9 @@
 # {{ ansible_managed }}
-# Ollama LLM runtime (CPU inference). The API has no authentication.
+# Ollama LLM runtime (CPU inference; the API has no authentication) and
+# Open WebUI, its chat UI over HTTPS on its own port (ADR-0019).
+x-config-revision: &config-revision
+  com.magicbox.config-revision: ${MAGICBOX_CONFIG_REVISION}
+
 services:
   ollama:
     image: {{ stacks_ollama_image }}
@@ -16,6 +20,45 @@ services:
       retries: 5
       start_period: 30s
 
+  open-webui:
+    image: {{ stacks_openwebui_image }}
+    container_name: open-webui
+    restart: unless-stopped
+    labels: *config-revision
+    # start.sh passes these arguments to uvicorn: TLS with the MagicBox
+    # certificate (Open WebUI has no TLS setting of its own).
+    command: [bash, start.sh, --workers, "1", --ssl-certfile, /etc/open-webui/tls/openwebui.crt,
+              --ssl-keyfile, /etc/open-webui/tls/openwebui.key]
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      ENABLE_OPENAI_API: "false"
+      WEBUI_URL: https://{{ magicbox_hostname }}.local:{{ stacks_openwebui_port }}
+      CORS_ALLOW_ORIGIN: https://{{ magicbox_hostname }}.local:{{ stacks_openwebui_port }}
+      WEBUI_SESSION_COOKIE_SECURE: "true"
+      WEBUI_AUTH_COOKIE_SECURE: "true"
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      # Admin created on first start (empty database); sign-up then disabled.
+      WEBUI_ADMIN_EMAIL: {{ stacks_openwebui_admin_email }}
+      WEBUI_ADMIN_PASSWORD: ${WEBUI_ADMIN_PASSWORD}
+      # No update checks or model downloads from the internet.
+      OFFLINE_MODE: "true"
+    ports:
+      - "{{ stacks_openwebui_port }}:8080"
+    volumes:
+      - open_webui_data:/app/backend/data
+      - {{ stacks_base_dir }}/ollama/tls:/etc/open-webui/tls:ro
+    depends_on:
+      - ollama
+    healthcheck:
+      # Loopback: the certificate names magicbox.local, hence -k.
+      test: ["CMD-SHELL", "curl -fsSk https://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
 volumes:
   ollama_data:
     name: ollama_data
+  open_webui_data:
+    name: open_webui_data

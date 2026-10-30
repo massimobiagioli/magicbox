@@ -2,7 +2,7 @@
 
 Ansible setup for a GMKtec Intel Mini PC: Docker and Portainer CE, served on
 the LAN at **https://magicbox.local:9443/**, plus default stacks: RabbitMQ,
-PostgreSQL, Ollama, and Grafana + Loki + Alloy. Optional: Jenkins (CI/CD), a
+PostgreSQL, Ollama + Open WebUI, and Grafana + Loki + Alloy. Optional: Jenkins (CI/CD), a
 Kong API gateway at **https://magicbox.local/** and RustFS (S3 object storage).
 
 ## Quick start
@@ -32,7 +32,8 @@ needs `make storage`; apps
 | Jenkins | `https://magicbox.local/jenkins/` | `https://magicbox.local:8443/jenkins/` | `admin` / `vault_jenkins_admin_password` |
 | Grafana | `https://magicbox.local/grafana/` | `https://magicbox.local:3000/grafana/` | `admin` / `vault_grafana_admin_password` |
 | RabbitMQ UI | `https://magicbox.local/rabbitmq/` | `http://magicbox.local:15672/rabbitmq/` | `magicbox` / `vault_rabbitmq_password` |
-| Ollama API (no UI) | `https://magicbox.local/ollama/` | `http://magicbox.local:11434/` | gateway: header `apikey: <vault_kong_ollama_api_key>`; direct: none |
+| Open WebUI (Ollama chat) | `https://magicbox.local/openwebui` (redirect) | `https://magicbox.local:8444/` | `admin@magicbox.local` / `vault_openwebui_admin_password` |
+| Ollama API | `https://magicbox.local/ollama/` | `http://magicbox.local:11434/` | gateway: header `apikey: <vault_kong_ollama_api_key>`; direct: none |
 | Tester App | `https://magicbox.local/tester-app` | - (loopback, port from the apps registry) | none |
 | RustFS console | `https://magicbox.local/rustfs` (redirect) | `https://magicbox.local:9101/rustfs/console/` | `vault_rustfs_access_key` / `vault_rustfs_secret_key` |
 | RustFS S3 API | - (signed paths, ADR-0018) | `https://magicbox.local:9100` (path-style, region `us-east-1`) | same keys as the console |

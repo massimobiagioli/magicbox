@@ -14,6 +14,10 @@ vault_become_password: ""
 vault_postgresql_password: ""
 vault_rabbitmq_password: ""
 vault_grafana_admin_password: ""
+# Open WebUI (ollama stack): admin password (first start only) and the key
+# that signs sessions (e.g. `openssl rand -hex 32`).
+vault_openwebui_admin_password: ""
+vault_openwebui_secret_key: ""
 
 # CI/CD (playbooks/ci-cd.yml). Admin password required (at least 12 characters);
 # the tokens are optional (leave empty until created, see the installation guide).

@@ -1,0 +1,30 @@
+---
+# Open WebUI (root in its container) serves HTTPS with a copy of the MagicBox
+# certificate.
+- name: Create the Open WebUI TLS directory
+  ansible.builtin.file:
+    path: "{{ stacks_base_dir }}/ollama/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop: ["", tls]
+
+- name: Give Open WebUI a copy of the MagicBox TLS certificate and key
+  ansible.builtin.copy:
+    src: "{{ magicbox_portainer_ca_cert | dirname }}/{{ item.src }}"
+    dest: "{{ stacks_base_dir }}/ollama/tls/{{ item.dest }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0400"
+  loop:
+    - { src: portainer.crt, dest: openwebui.crt }
+    - { src: portainer.key, dest: openwebui.key }
+  register: stacks_ollama_tls
+
+- name: Derive a configuration revision that redeploys Open WebUI when files change
+  ansible.builtin.set_fact:
+    stacks_config_revision: >-
+      {{ (stacks_ollama_tls.results | map(attribute='checksum') | join(','))
+         | hash('sha256') | truncate(16, true, '') }}

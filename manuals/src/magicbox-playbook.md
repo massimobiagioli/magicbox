@@ -128,6 +128,7 @@ Defined in `inventory/hosts.yml` (environment facts) or
 | `portainer_admin_password` | `{{ vault_portainer_admin_password }}` | Bootstrap admin password, from the vault. |
 | `vault_portainer_admin_password` | required (vault) | At least 12 characters; in `vault.yml` only. |
 | `vault_postgresql_password`, `vault_rabbitmq_password`, `vault_grafana_admin_password` | required for the matching stack (vault) | At least 12 characters each. |
+| `vault_openwebui_admin_password`, `vault_openwebui_secret_key` | required for the `ollama` stack (vault) | At least 12 characters each; Open WebUI admin password (first start only) and session signing key. |
 | `vault_jenkins_admin_password`, `vault_jenkins_github_token`, `vault_jenkins_portainer_token` | Jenkins stack (vault) | Admin password (12+ characters) required; tokens optional. |
 | `magicbox_apps` | `[]` (`inventory/group_vars/magicbox/apps.yml`) | Apps (ADR-0016, ADR-0017): `name` (Jenkins job, Portainer stack, container, URL path `/<name>`), `port` (host port on `127.0.0.1`, 18000-18999), `repo` (`https://github.com/<owner>/<repository>`). Maintained by `tools/new_app.py`. |
 | `vault_rustfs_access_key`, `vault_rustfs_secret_key` | required for the RustFS stack (vault) | At least 12 characters each; RustFS root credentials (console login, S3 keys), applied at every start. |
@@ -326,7 +327,7 @@ site environment (ADR-0011). For each name in `stacks_enabled` it renders
 `roles/stacks/templates/<name>.yml.j2`, passes the secrets as stack
 environment variables, and creates the stack, or updates it when the compose
 file or environment differs or one of its containers is missing (e.g. an
-interrupted first deployment). Config files for `rabbitmq`, `observability`, `jenkins`, `kong` and `rustfs` are written to
+interrupted first deployment). Config files for `rabbitmq`, `ollama` (Open WebUI TLS), `observability`, `jenkins`, `kong` and `rustfs` are written to
 `stacks_base_dir`; their checksum (`MAGICBOX_CONFIG_REVISION` label) forces a
 redeploy when they change.
 
@@ -334,7 +335,7 @@ redeploy when they change.
 |-------|------------|-----------------|---------|
 | `rabbitmq` | rabbitmq | 5672, 15672 (UI under `/rabbitmq/`) | rabbitmq_data |
 | `postgresql` | postgresql | 5432 | postgresql_data |
-| `ollama` | ollama | 11434 | ollama_data |
+| `ollama` | ollama, open-webui | 11434 (API), 8444 (Open WebUI, HTTPS) | ollama_data, open_webui_data |
 | `observability` | grafana, loki, alloy | 3000 (Grafana HTTPS, under `/grafana/`) | grafana_data, loki_data, alloy_data |
 | `jenkins` (only via `playbooks/ci-cd.yml`) | jenkins, jenkins-agent | 8443 (Jenkins HTTPS, under `/jenkins/`) | jenkins_home, jenkins_agent_work |
 | `kong` (only via `playbooks/api-gateway.yml`) | kong | 80, 443 (host networking, ufw) | none (DB-less) |
@@ -347,6 +348,7 @@ redeploy when they change.
 | `stacks_rabbitmq_image` | `rabbitmq:4.3.7-management` | RabbitMQ image. |
 | `stacks_postgresql_image` | `postgres:18.6` | PostgreSQL image (newest major, supported to 2030). |
 | `stacks_ollama_image` | `ollama/ollama:0.40.12` | Ollama image. |
+| `stacks_openwebui_image` | `ghcr.io/open-webui/open-webui:v0.12.5-slim` | Open WebUI image, slim (no local RAG, ADR-0019). |
 | `stacks_grafana_image` | `grafana/grafana:13.2.5` | Grafana image. |
 | `stacks_loki_image` | `grafana/loki:3.7.9` | Loki image. |
 | `stacks_alloy_image` | `grafana/alloy:v1.21.2` | Alloy image (Promtail replacement, ADR-0013). |
@@ -355,12 +357,16 @@ redeploy when they change.
 | `stacks_postgresql_port` | `5432` | Host port for PostgreSQL. |
 | `stacks_ollama_port` | `11434` | Host port for the Ollama API. |
 | `stacks_grafana_port` | `3000` | Host port for Grafana (HTTPS). |
+| `stacks_openwebui_port` | `8444` | Host port for Open WebUI (HTTPS, MagicBox certificate). |
 | `stacks_rabbitmq_user` | `magicbox` | RabbitMQ default user. |
 | `stacks_rabbitmq_password` | `{{ vault_rabbitmq_password }}` | RabbitMQ password (first start only). |
 | `stacks_postgresql_user` | `magicbox` | PostgreSQL superuser. |
 | `stacks_postgresql_database` | `magicbox` | Database created at first start. |
 | `stacks_postgresql_password` | `{{ vault_postgresql_password }}` | PostgreSQL password (first start only). |
 | `stacks_grafana_admin_password` | `{{ vault_grafana_admin_password }}` | Grafana `admin` password (first start only). |
+| `stacks_openwebui_admin_email` | `admin@magicbox.local` | Open WebUI admin login name. |
+| `stacks_openwebui_admin_password` | `{{ vault_openwebui_admin_password }}` | Open WebUI admin password (first start only; sign-up then disabled). |
+| `stacks_openwebui_secret_key` | `{{ vault_openwebui_secret_key }}` | Signs Open WebUI sessions; changing it logs everyone out. |
 | `stacks_ollama_models` | `[]` | Models to pull after deployment, e.g. `["llama3.2:3b"]`; never deleted. |
 | `stacks_loki_retention` | `168h` | Loki log retention. |
 | `stacks_jenkins_image` | `jenkins/jenkins:2.580.2-lts-jdk21` | Base of the controller image built on MagicBox. |
@@ -404,7 +410,9 @@ environment, DOCKER-USER filter); the vault contains the stack passwords.
 **Verification.** All stack containers running, and healthy where a
 healthcheck exists (up to 15 minutes, to cover first image pulls).
 PostgreSQL `pg_isready`. RabbitMQ `/api/overview` with the vault credentials.
-Ollama `/api/version`. Grafana `/api/health` over HTTPS with the MagicBox CA.
+Ollama `/api/version`. Open WebUI over HTTPS with the MagicBox CA, sign-up
+disabled, admin login, and Ollama reached through it. Grafana `/api/health`
+over HTTPS with the MagicBox CA.
 Loki has a `container` label value `loki`, which proves Alloy -> Loki ->
 Grafana works.
 
@@ -438,11 +446,12 @@ status on `127.0.0.1:8100`, Kong Manager off.
 | `/ollama/` | Ollama 11434 (API, no UI) | stripped | header/query `apikey` = `vault_kong_ollama_api_key` |
 | `/<name>` (each app in `magicbox_apps`) | app `<port>` (HTTP) | stripped | app's own |
 | `/rustfs`, `/rustfs/` | - | 301 to `https://magicbox.local:9101/rustfs/console/` | - |
+| `/openwebui`, `/openwebui/` | - | 301 to `https://magicbox.local:8444/` (ADR-0019) | - |
 
 Verification: every route whose container exists answers 200 through
 `https://magicbox.local/` with the MagicBox CA (Ollama with the key);
 `/ollama/` without the key gets 401; `/portainer` and `/rabbitmq` get a 301
-adding the slash; `/rustfs` gets a 301 to the console port; HTTP gets a 301
+adding the slash; `/rustfs` and `/openwebui` get a 301 to their own ports; HTTP gets a 301
 to HTTPS. Apps
 registry assertions: unique names (lowercase, digits, hyphens, not a built-in
 route) and unique ports outside `stacks_reserved_ports`.
@@ -487,9 +496,13 @@ when anything is not OK.
   run.
 - RabbitMQ, PostgreSQL and Ollama use plain-text protocols on the LAN; Ollama
   has no authentication. Access is limited to the LAN by DOCKER-USER.
-- Grafana uses a copy of the Portainer certificate. After a certificate
-  renewal by `site.yml`, run `stacks.yml` to refresh the copy.
-- First deployment downloads about 4 GB (Ollama is about 3.4 GB).
+- Grafana and Open WebUI use a copy of the Portainer certificate. After a
+  certificate renewal by `site.yml`, run `stacks.yml` to refresh the copies.
+- First deployment downloads about 5 GB (Ollama about 3.4 GB, Open WebUI
+  slim about 0.9 GB).
+- Open WebUI is reached on port 8444 (no sub-path support); `/openwebui` on
+  the gateway only redirects. Slim image: document upload / RAG needs an
+  embedding engine and a vector store, not configured.
 - Jenkins agent: the mounted Docker socket is equivalent to root on MagicBox
   (ADR-0014). Build only private repositories; no pull requests from forks.
 - Jenkins pipelines run against the host engine: `docker run -v $PWD:...`
