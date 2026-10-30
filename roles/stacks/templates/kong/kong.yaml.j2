@@ -44,16 +44,18 @@ services:
             config:
               access:
                 - kong.response.exit(301, nil, { Location = "/portainer/" })
-      # Portainer loads its assets relative to the page: it needs the slash.
-      - name: portainer-slash
-        paths: ["~/portainer$"]
+{% for route in stacks_kong_all_routes | selectattr('slash', 'defined') | selectattr('slash') %}
+      # The UI loads its assets relative to the page: it needs the slash.
+      - name: {{ route.name }}-slash
+        paths: ["~{{ route.path | regex_replace('/$', '') }}$"]
         protocols: [https]
         https_redirect_status_code: 301
         plugins:
           - name: pre-function
             config:
               access:
-                - kong.response.exit(301, nil, { Location = "/portainer/" })
+                - kong.response.exit(301, nil, { Location = "{{ route.path }}" })
+{% endfor %}
 
 consumers:
   - username: ollama-client

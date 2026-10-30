@@ -416,17 +416,19 @@ status on `127.0.0.1:8100`, Kong Manager off.
 
 | Route | Upstream (127.0.0.1) | Path to upstream | Auth |
 |-------|----------------------|------------------|------|
-| `/` | - | 301 to `/portainer/` | - |
+| `/`, `/portainer` | - | 301 to `/portainer/` | - |
+| `/rabbitmq` | - | 301 to `/rabbitmq/` | - |
 | `/portainer/` | Portainer 9443 (HTTPS) | stripped | Portainer login |
 | `/jenkins` | Jenkins 8443 (HTTPS, `--prefix=/jenkins`) | kept | Jenkins login |
 | `/grafana` | Grafana 3000 (HTTPS, `serve_from_sub_path`) | kept | Grafana login |
-| `/rabbitmq` | RabbitMQ 15672 (`management.path_prefix`) | kept | RabbitMQ login |
+| `/rabbitmq/` | RabbitMQ 15672 (`management.path_prefix`) | kept | RabbitMQ login |
 | `/ollama/` | Ollama 11434 (API, no UI) | stripped | header/query `apikey` = `vault_kong_ollama_api_key` |
 | `/<name>` (each app in `magicbox_apps`) | app `<port>` (HTTP) | stripped | app's own |
 
 Verification: every route whose container exists answers 200 through
 `https://magicbox.local/` with the MagicBox CA (Ollama with the key);
-`/ollama/` without the key gets 401; HTTP gets a 301 to HTTPS. Apps
+`/ollama/` without the key gets 401; `/portainer` and `/rabbitmq` get a 301
+adding the slash; HTTP gets a 301 to HTTPS. Apps
 registry assertions: unique names (lowercase, digits, hyphens, not a built-in
 route) and unique ports outside `stacks_reserved_ports`.
 

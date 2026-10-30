@@ -66,12 +66,15 @@ stacks_jenkins_keystore_password: magicbox-jenkins-tls
 # API gateway routes (ADR-0015): https://<host>.local/<path> -> upstream on
 # 127.0.0.1 (Kong uses host networking). `strip`: the service serves from /,
 # so the path is removed before forwarding; the others serve from the same
-# sub-path on their own port too. `container` gates the verification check.
+# sub-path on their own port too. `slash`: the service needs the trailing
+# slash, so "/<name>" redirects to "/<name>/". `container` gates the
+# verification check.
 stacks_kong_routes:
   - name: portainer
     path: /portainer/
     url: "https://127.0.0.1:{{ magicbox_portainer_api_url | urlsplit('port') }}"
     strip: true
+    slash: true
     preserve_host: true
     check: /portainer/api/system/status
     container: kong
@@ -90,9 +93,10 @@ stacks_kong_routes:
     check: /grafana/api/health
     container: grafana
   - name: rabbitmq
-    path: /rabbitmq
+    path: /rabbitmq/
     url: "http://127.0.0.1:{{ stacks_rabbitmq_management_port }}"
     strip: false
+    slash: true
     preserve_host: true
     check: /rabbitmq/
     container: rabbitmq

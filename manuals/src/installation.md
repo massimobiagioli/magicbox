@@ -226,8 +226,8 @@ controller$ make api-gateway
 ```
 
 - [ ] `https://magicbox.local/` opens Portainer (redirect to `/portainer/`).
-- [ ] `https://magicbox.local/grafana/`, `/rabbitmq/`, `/jenkins/` (if
-      installed) open their login page.
+- [ ] `https://magicbox.local/grafana`, `/rabbitmq`, `/jenkins` (if
+      installed; with or without the final `/`) open their login page.
 - [ ] Ollama (API only, no UI) answers with the key, `401` without it:
 
 ```text

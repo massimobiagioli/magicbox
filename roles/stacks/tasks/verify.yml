@@ -168,6 +168,21 @@
     status_code: 401
   when: "'kong' in stacks_enabled"
 
+- name: Check the gateway adds the trailing slash where a UI needs it
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_kong_https_port }}{{ item.path | regex_replace('/$', '') }}"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    follow_redirects: none
+    status_code: 301
+  loop: "{{ stacks_kong_all_routes | selectattr('slash', 'defined') | selectattr('slash') }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: stacks_kong_slash
+  failed_when: >-
+    stacks_kong_slash.status != 301
+    or not stacks_kong_slash.location is search(item.path ~ '$')
+  when: "'kong' in stacks_enabled"
+
 - name: Check the gateway redirects HTTP to HTTPS
   ansible.builtin.uri:
     url: "http://{{ magicbox_hostname }}.local:{{ stacks_kong_http_port }}/portainer/"
