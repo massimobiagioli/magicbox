@@ -16,6 +16,9 @@ stacks_env:
   jenkins: {}
   # Kong reads its declarative configuration (with the API key) from a file.
   kong: {}
+  rustfs:
+    RUSTFS_ACCESS_KEY: "{{ stacks_rustfs_access_key }}"
+    RUSTFS_SECRET_KEY: "{{ stacks_rustfs_secret_key }}"
 
 # Passwords each stack needs (checked before deployment).
 stacks_required_secrets:
@@ -25,6 +28,7 @@ stacks_required_secrets:
   observability: [stacks_grafana_admin_password]
   jenkins: [stacks_jenkins_admin_password]
   kong: [stacks_kong_ollama_api_key]
+  rustfs: [stacks_rustfs_access_key, stacks_rustfs_secret_key]
 
 # Containers created by each stack (used by verification).
 stacks_containers:
@@ -34,6 +38,7 @@ stacks_containers:
   observability: [loki, alloy, grafana]
   jenkins: [jenkins, jenkins-agent]
   kong: [kong]
+  rustfs: [rustfs]
 
 stacks_images:
   rabbitmq: ["{{ stacks_rabbitmq_image }}"]
@@ -42,6 +47,7 @@ stacks_images:
   observability: ["{{ stacks_loki_image }}", "{{ stacks_alloy_image }}", "{{ stacks_grafana_image }}"]
   jenkins: ["{{ stacks_jenkins_controller_image }}", "{{ stacks_jenkins_agent_image }}"]
   kong: ["{{ stacks_kong_image }}"]
+  rustfs: ["{{ stacks_rustfs_image }}"]
 
 # Jenkins images built on MagicBox. The tag carries a hash of the build files,
 # so changing a base image, plugin or script yields a new tag, a new build and
@@ -122,11 +128,20 @@ stacks_kong_app_routes: >-
   {{ routes }}
 stacks_kong_all_routes: "{{ stacks_kong_routes + stacks_kong_app_routes }}"
 
+# Gateway paths that redirect (301) to a UI on its own port: the RustFS console
+# sends its S3 and admin calls to the page's origin, so it cannot live under a
+# gateway path (ADR-0018).
+stacks_kong_port_redirects:
+  - name: rustfs
+    path: /rustfs
+    location: "https://{{ magicbox_hostname }}.local:{{ stacks_rustfs_console_port }}/rustfs/console/"
+
 # Host ports an app must not use (services, gateway, Kong admin/status).
 stacks_reserved_ports: >-
   {{ [stacks_rabbitmq_amqp_port, stacks_rabbitmq_management_port, stacks_postgresql_port,
       stacks_ollama_port, stacks_grafana_port, stacks_jenkins_port, stacks_kong_http_port,
-      stacks_kong_https_port, magicbox_portainer_api_url | urlsplit('port'), 8001, 8100]
+      stacks_kong_https_port, stacks_rustfs_api_port, stacks_rustfs_console_port,
+      magicbox_portainer_api_url | urlsplit('port'), 8001, 8100]
      | map('int') | list }}
 
 # Jenkins API used by `make apps` (same endpoint as the CI/CD verification).

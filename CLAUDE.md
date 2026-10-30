@@ -33,8 +33,9 @@ computers at **https://magicbox.local:9443/**.
 - Significant decisions get a new sequential ADR in `.docs/adr/`, listed in the
   registry and here.
 - Every service with a web UI or HTTP API gets a route in the API gateway
-  (`stacks_kong_routes`, or the apps registry for apps) and its URL (gateway and direct port) in the
-  `README.md` "Addresses" table and the installation guide services table.
+  (`stacks_kong_routes`, or the apps registry for apps; a redirect in
+  `stacks_kong_port_redirects` when it cannot live under a path, ADR-0018)
+  and its URL (gateway and direct port) in the `README.md` "Addresses" table and the installation guide services table.
 - Report honestly: separate "verified on MagicBox", "verified in the test
   container" and "not executed". Never claim a remote deployment without access.
 
@@ -51,6 +52,7 @@ make verify
 make stacks          # default Portainer stacks
 make ci-cd           # CI/CD stack: Jenkins controller + SSH build agent
 make api-gateway     # API gateway stack: Kong, https://magicbox.local/<service>/
+make storage         # object storage stack: RustFS (S3 API :9100, console :9101)
 uv run tools/new_app.py <name> [--create-repo]          # new app from the template + registry entry
 make apps            # apps registry -> Kong routes + Jenkins jobs (https://magicbox.local/<app>)
 make status          # read-only: stack images pulled, containers running/healthy
@@ -59,6 +61,7 @@ make update          # apt update + upgrade (EXTRA="-e os_update_reboot=true" re
 make test-container ARGS="--with-stacks"                   # includes stacks (~4 GB pulls)
 make test-container ARGS="--with-ci-cd"                    # includes the Jenkins stack
 make test-container ARGS="--with-api-gateway"              # includes the Kong stack
+make test-container ARGS="--with-storage"                  # includes the RustFS stack
 make test-container ARGS="--with-ci-cd --with-api-gateway --with-apps"  # includes app routes and jobs
 ```
 
@@ -68,6 +71,7 @@ make test-container ARGS="--with-ci-cd --with-api-gateway --with-apps"  # includ
 - `playbooks/stacks.yml` - default Portainer stacks (RabbitMQ, PostgreSQL, Ollama, Grafana/Loki/Alloy)
 - `playbooks/ci-cd.yml` - CI/CD stack (Jenkins) via the `stacks` role
 - `playbooks/api-gateway.yml` - API gateway stack (Kong) via the `stacks` role
+- `playbooks/storage.yml` - object storage stack (RustFS, S3-compatible) via the `stacks` role
 - `playbooks/apps.yml` - apps registry -> Kong routes, Jenkins jobs (Job DSL), `/opt/magicbox/apps/apps.json`
 - `playbooks/status.yml` - read-only stack status (images, containers)
 - `playbooks/update.yml` - OS package update (apt update + upgrade), optional reboot
@@ -106,6 +110,7 @@ make test-container ARGS="--with-ci-cd --with-api-gateway --with-apps"  # includ
   - [ADR-0015](.docs/adr/adr-0015.md) - Kong API gateway with path-based routes
   - [ADR-0016](.docs/adr/adr-0016.md) - Apps deployed by Jenkins and registered in the API gateway
   - [ADR-0017](.docs/adr/adr-0017.md) - App jobs and ports from a git-ignored apps registry
+  - [ADR-0018](.docs/adr/adr-0018.md) - RustFS object storage with the console on its own port
 
 ## Manuals
 
@@ -124,4 +129,4 @@ produces deterministic PDFs.
 - [tools/check_secrets.py](tools/check_secrets.py) - vault file encrypted; no plaintext `vault_*` values or private keys tracked
 - [tools/idempotency_check.py](tools/idempotency_check.py) - runs `ansible-playbook` twice, fails if the second run changes anything
 - [tools/new_app.py](tools/new_app.py) - new app from the template: rename, `uv lock`, first commit, apps registry entry (first free port), optional private GitHub repo (`--create-repo`)
-- [tools/container_test.py](tools/container_test.py) - disposable systemd container: full converge + idempotency check (`--with-stacks` adds the stacks playbook, `--with-ci-cd` the Jenkins playbook, `--with-api-gateway` the Kong playbook, `--with-apps` the apps playbook, needs the previous two)
+- [tools/container_test.py](tools/container_test.py) - disposable systemd container: full converge + idempotency check (`--with-stacks` adds the stacks playbook, `--with-ci-cd` the Jenkins playbook, `--with-api-gateway` the Kong playbook, `--with-storage` the RustFS playbook, `--with-apps` the apps playbook, needs the Jenkins and Kong ones)

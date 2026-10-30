@@ -1,0 +1,15 @@
+---
+# Object storage: RustFS (S3-compatible, web console) deployed as the
+# Portainer stack "rustfs" in the site environment (ADR-0018). Requires
+# playbooks/site.yml. The gateway path /rustfs (make api-gateway) redirects
+# to the console on its own port.
+# Run: make storage
+- name: Deploy the object storage stack (RustFS) through Portainer
+  hosts: magicbox
+  become: true
+  gather_facts: false
+  vars:
+    stacks_enabled: [rustfs]
+  roles:
+    - role: stacks
+      tags: [storage]

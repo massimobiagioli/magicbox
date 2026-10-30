@@ -265,6 +265,41 @@ controller$ make apps
       `https://magicbox.local/<name>` opens.
 - [ ] `make apps` again: every app `deployed`, `changed=0`.
 
+### 4.4 Object storage (RustFS, optional)
+
+- [ ] `make vault-edit`: set `vault_rustfs_access_key` (e.g.
+      `openssl rand -hex 12`) and `vault_rustfs_secret_key` (e.g.
+      `openssl rand -hex 24`), 12+ characters each.
+
+```text
+magicbox$ sudo docker pull rustfs/rustfs:1.0.4
+controller$ make storage
+```
+
+- [ ] `https://magicbox.local:9101/rustfs/console/` opens (same CA as
+      Portainer); log in with the access key and the secret key.
+- [ ] Console: create a bucket, upload a file, download it.
+- [ ] With 4.2: `https://magicbox.local/rustfs` redirects to the console
+      (run `make api-gateway` once after adding RustFS).
+- [ ] S3 client (endpoint `https://magicbox.local:9100`, path-style, region
+      `us-east-1`, the MagicBox CA trusted):
+
+```text
+controller$ AWS_ACCESS_KEY_ID=<access> AWS_SECRET_ACCESS_KEY=<secret> AWS_CA_BUNDLE=artifacts/magicbox-local-ca.crt \
+  aws --endpoint-url https://magicbox.local:9100 --region us-east-1 s3 ls
+```
+
+- [ ] A second `make storage` reports `changed=0`.
+
+Rotate keys: change them with `make vault-edit`, run `make storage` (applied
+at every start; data kept), update clients.
+
+Recreate from scratch (deletes every bucket and object):
+
+- [ ] Portainer, environment `homelab`: delete the stack `rustfs`.
+- [ ] `magicbox$ sudo docker volume rm rustfs_data`
+- [ ] `controller$ make storage`, then the checks above.
+
 ## 5. Verification
 
 ```text
@@ -293,6 +328,8 @@ Services (from the LAN):
 | Grafana | `https://magicbox.local:3000/grafana/` | `https://magicbox.local/grafana/` | `admin` / `vault_grafana_admin_password` |
 | RabbitMQ UI | `http://magicbox.local:15672/rabbitmq/` | `https://magicbox.local/rabbitmq/` | `magicbox` / `vault_rabbitmq_password` |
 | RabbitMQ AMQP | `amqp://magicbox.local:5672` | - | same as UI |
+| RustFS console (4.4) | `https://magicbox.local:9101/rustfs/console/` | `https://magicbox.local/rustfs` (redirect) | `vault_rustfs_access_key` / `vault_rustfs_secret_key` |
+| RustFS S3 API (4.4) | `https://magicbox.local:9100` (path-style, `us-east-1`) | - | same keys as the console |
 | PostgreSQL | `magicbox.local:5432`, database `magicbox` | - | `magicbox` / `vault_postgresql_password` |
 | Ollama API | `http://magicbox.local:11434/` | `https://magicbox.local/ollama/` | direct: none (LAN only); gateway: header `apikey` |
 | Jenkins (if installed) | `https://magicbox.local:8443/jenkins/` | `https://magicbox.local/jenkins/` | `admin` / `vault_jenkins_admin_password` |
@@ -409,7 +446,8 @@ magicbox$ sudo docker start portainer
 ```
 
 Stack data lives in the volumes `postgresql_data`, `rabbitmq_data`,
-`grafana_data`, `loki_data` and `ollama_data` under `/var/lib/docker/volumes/`.
+`grafana_data`, `loki_data`, `ollama_data` and `rustfs_data` (buckets) under
+`/var/lib/docker/volumes/`.
 Stop the stack in Portainer before copying a volume. For PostgreSQL, prefer
 a logical dump:
 

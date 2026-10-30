@@ -70,6 +70,26 @@
   until: stacks_grafana_health.status == 200
   when: "'observability' in stacks_enabled"
 
+- name: Check the RustFS S3 API and console over HTTPS with the MagicBox CA
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ item }}"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+  loop:
+    - "{{ stacks_rustfs_api_port }}/health"
+    - "{{ stacks_rustfs_console_port }}/rustfs/console/health"
+  register: stacks_rustfs_health
+  retries: 20
+  delay: 3
+  until: stacks_rustfs_health.status == 200
+  when: "'rustfs' in stacks_enabled"
+
+- name: Check RustFS refuses anonymous S3 requests
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_rustfs_api_port }}/"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    status_code: 403
+  when: "'rustfs' in stacks_enabled"
+
 - name: Check that Loki receives container logs shipped by Alloy (via Grafana)
   ansible.builtin.uri:
     url: >-
@@ -181,6 +201,21 @@
   failed_when: >-
     stacks_kong_slash.status != 301
     or not stacks_kong_slash.location is search(item.path ~ '$')
+  when: "'kong' in stacks_enabled"
+
+- name: Check the gateway redirects to the UIs on their own ports
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_kong_https_port }}{{ item.path }}"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    follow_redirects: none
+    status_code: 301
+  loop: "{{ stacks_kong_port_redirects }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: stacks_kong_port_redirect
+  failed_when: >-
+    stacks_kong_port_redirect.status != 301
+    or stacks_kong_port_redirect.location != item.location
   when: "'kong' in stacks_enabled"
 
 - name: Check the gateway redirects HTTP to HTTPS

@@ -24,3 +24,9 @@ vault_jenkins_portainer_token: ""
 # API gateway (playbooks/api-gateway.yml). API key for /ollama (at least 12
 # characters, e.g. `openssl rand -hex 24`); clients send it as header `apikey`.
 vault_kong_ollama_api_key: ""
+
+# Object storage (playbooks/storage.yml). RustFS root credentials (S3 access
+# key and secret key, at least 12 characters each; e.g. `openssl rand -hex 12`
+# and `openssl rand -hex 24`); applied at every start.
+vault_rustfs_access_key: ""
+vault_rustfs_secret_key: ""

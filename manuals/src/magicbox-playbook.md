@@ -12,7 +12,7 @@ community.general 13.5.0, community.docker 5.4.0, community.crypto 3.5.1.
 
 | Item | Value |
 |------|-------|
-| Playbooks | `playbooks/site.yml` (host + Portainer), `playbooks/stacks.yml` (default stacks), `playbooks/ci-cd.yml` (Jenkins), `playbooks/api-gateway.yml` (Kong), `playbooks/apps.yml` (app routes), `playbooks/update.yml` (OS packages) |
+| Playbooks | `playbooks/site.yml` (host + Portainer), `playbooks/stacks.yml` (default stacks), `playbooks/ci-cd.yml` (Jenkins), `playbooks/api-gateway.yml` (Kong), `playbooks/storage.yml` (RustFS), `playbooks/apps.yml` (app routes), `playbooks/update.yml` (OS packages) |
 | Inventory | `inventory/hosts.yml` (git-ignored; template `inventory/hosts.example.yml`) |
 | Group | `magicbox` |
 | Project policy | `inventory/group_vars/magicbox/main.yml` |
@@ -35,6 +35,10 @@ Portainer*, that runs the `stacks` role with `stacks_enabled: [jenkins]`.
 
 `playbooks/api-gateway.yml` has one play, *Deploy the API gateway stack (Kong)
 through Portainer*, that runs the `stacks` role with `stacks_enabled: [kong]`.
+
+`playbooks/storage.yml` has one play, *Deploy the object storage stack
+(RustFS) through Portainer*, that runs the `stacks` role with
+`stacks_enabled: [rustfs]`.
 
 `playbooks/apps.yml` has one play, *Register the apps in the API gateway
 (Kong) and in Jenkins*: the same Kong deployment, then the app jobs
@@ -60,6 +64,7 @@ through Portainer*, that runs the `stacks` role with `stacks_enabled: [kong]`.
 | Stacks: verification only | `uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass --tags verify` |
 | CI/CD stack (Jenkins) | `make ci-cd` |
 | API gateway stack (Kong) | `make api-gateway` |
+| Object storage stack (RustFS) | `make storage` |
 | Register apps in the gateway | `make apps` |
 | Stack status (read-only) | `make status` |
 | Edit the vault | `make vault-edit` |
@@ -89,6 +94,7 @@ fresh host because the packages they verify are not installed yet.
 | `stacks` | The `stacks` role (in `playbooks/stacks.yml`) |
 | `ci-cd` | The `stacks` role in `playbooks/ci-cd.yml` (Jenkins stack) |
 | `api-gateway` | The `stacks` role in `playbooks/api-gateway.yml` (Kong stack) |
+| `storage` | The `stacks` role in `playbooks/storage.yml` (RustFS stack) |
 | `apps` | The `stacks` role and the apps report in `playbooks/apps.yml` |
 | `status` | The read-only status report (in `playbooks/status.yml`) |
 | `update` | The `os_update` role (in `playbooks/update.yml`) |
@@ -124,6 +130,7 @@ Defined in `inventory/hosts.yml` (environment facts) or
 | `vault_postgresql_password`, `vault_rabbitmq_password`, `vault_grafana_admin_password` | required for the matching stack (vault) | At least 12 characters each. |
 | `vault_jenkins_admin_password`, `vault_jenkins_github_token`, `vault_jenkins_portainer_token` | Jenkins stack (vault) | Admin password (12+ characters) required; tokens optional. |
 | `magicbox_apps` | `[]` (`inventory/group_vars/magicbox/apps.yml`) | Apps (ADR-0016, ADR-0017): `name` (Jenkins job, Portainer stack, container, URL path `/<name>`), `port` (host port on `127.0.0.1`, 18000-18999), `repo` (`https://github.com/<owner>/<repository>`). Maintained by `tools/new_app.py`. |
+| `vault_rustfs_access_key`, `vault_rustfs_secret_key` | required for the RustFS stack (vault) | At least 12 characters each; RustFS root credentials (console login, S3 keys), applied at every start. |
 | `vault_kong_ollama_api_key` | required for the Kong stack (vault) | At least 12 characters; API key for `https://magicbox.local/ollama/` (header or query parameter `apikey`). |
 
 ## 5. Role `preflight`
@@ -319,7 +326,7 @@ site environment (ADR-0011). For each name in `stacks_enabled` it renders
 `roles/stacks/templates/<name>.yml.j2`, passes the secrets as stack
 environment variables, and creates the stack, or updates it when the compose
 file or environment differs or one of its containers is missing (e.g. an
-interrupted first deployment). Config files for `rabbitmq`, `observability`, `jenkins` and `kong` are written to
+interrupted first deployment). Config files for `rabbitmq`, `observability`, `jenkins`, `kong` and `rustfs` are written to
 `stacks_base_dir`; their checksum (`MAGICBOX_CONFIG_REVISION` label) forces a
 redeploy when they change.
 
@@ -331,6 +338,7 @@ redeploy when they change.
 | `observability` | grafana, loki, alloy | 3000 (Grafana HTTPS, under `/grafana/`) | grafana_data, loki_data, alloy_data |
 | `jenkins` (only via `playbooks/ci-cd.yml`) | jenkins, jenkins-agent | 8443 (Jenkins HTTPS, under `/jenkins/`) | jenkins_home, jenkins_agent_work |
 | `kong` (only via `playbooks/api-gateway.yml`) | kong | 80, 443 (host networking, ufw) | none (DB-less) |
+| `rustfs` (only via `playbooks/storage.yml`) | rustfs | 9100 (S3 API), 9101 (console under `/rustfs/console/`), both HTTPS | rustfs_data |
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -376,6 +384,11 @@ redeploy when they change.
 | `stacks_kong_https_port` | `443` | Host port for HTTPS (MagicBox certificate). Keep in `firewall_lan_tcp_ports`. |
 | `stacks_kong_upstream_timeout` | `600` | Seconds Kong waits for an upstream (read/write). |
 | `stacks_kong_ollama_api_key` | `{{ vault_kong_ollama_api_key }}` | API key required on `/ollama/` (Kong `key-auth`, consumer `ollama-client`). |
+| `stacks_rustfs_image` | `rustfs/rustfs:1.0.4` | RustFS image (ADR-0018). |
+| `stacks_rustfs_api_port` | `9100` | Host port for the S3 API (HTTPS). Not 9000: it must stay closed. |
+| `stacks_rustfs_console_port` | `9101` | Host port for the console (HTTPS, `/rustfs/console/`; also answers S3/admin calls). |
+| `stacks_rustfs_access_key` | `{{ vault_rustfs_access_key }}` | RustFS root access key (every start). |
+| `stacks_rustfs_secret_key` | `{{ vault_rustfs_secret_key }}` | RustFS root secret key (every start). |
 
 Internal data (`roles/stacks/vars/main.yml`, not meant to be overridden):
 `stacks_env` (environment per stack), `stacks_required_secrets`,
@@ -383,7 +396,7 @@ Internal data (`roles/stacks/vars/main.yml`, not meant to be overridden):
 (`stacks_jenkins_build_tag`, a hash of the build files), the image names, the
 Jenkins UID and the PKCS#12 keystore password, and the gateway routes
 (`stacks_kong_routes`, `stacks_kong_app_routes` built from `magicbox_apps`,
-`stacks_kong_all_routes`, `stacks_reserved_ports`).
+`stacks_kong_all_routes`, `stacks_kong_port_redirects`, `stacks_reserved_ports`).
 
 **Prerequisites.** `playbooks/site.yml` completed (Portainer, `homelab`
 environment, DOCKER-USER filter); the vault contains the stack passwords.
@@ -424,11 +437,13 @@ status on `127.0.0.1:8100`, Kong Manager off.
 | `/rabbitmq/` | RabbitMQ 15672 (`management.path_prefix`) | kept | RabbitMQ login |
 | `/ollama/` | Ollama 11434 (API, no UI) | stripped | header/query `apikey` = `vault_kong_ollama_api_key` |
 | `/<name>` (each app in `magicbox_apps`) | app `<port>` (HTTP) | stripped | app's own |
+| `/rustfs`, `/rustfs/` | - | 301 to `https://magicbox.local:9101/rustfs/console/` | - |
 
 Verification: every route whose container exists answers 200 through
 `https://magicbox.local/` with the MagicBox CA (Ollama with the key);
 `/ollama/` without the key gets 401; `/portainer` and `/rabbitmq` get a 301
-adding the slash; HTTP gets a 301 to HTTPS. Apps
+adding the slash; `/rustfs` gets a 301 to the console port; HTTP gets a 301
+to HTTPS. Apps
 registry assertions: unique names (lowercase, digits, hyphens, not a built-in
 route) and unique ports outside `stacks_reserved_ports`.
 
@@ -445,6 +460,16 @@ reads its port from `apps.json`, and deploys the Portainer stack `<name>`
 (image `magicbox/<name>:<commit>`, `127.0.0.1:<port>`). Removing an app from
 the registry removes its route and port, not its job or stack; job changes
 in the UI are overwritten.
+
+**Object storage (`make storage`, ADR-0018).** RustFS, one data volume
+(single drive, no parity), root credentials from the vault. Ansible copies the
+MagicBox certificate to `/opt/magicbox/stacks/rustfs/tls/`
+(`rustfs_cert.pem`, `rustfs_key.pem`, UID 10001, 0400), so both ports serve
+HTTPS. The console uses the page's origin for its S3 and admin calls, so it
+is opened on its own port; the gateway path only redirects. S3 clients use
+`https://magicbox.local:9100`, path-style, region `us-east-1`. Verification:
+`/health` (9100) and `/rustfs/console/health` (9101) over HTTPS with the
+MagicBox CA; anonymous S3 request refused (403).
 
 **Status.** `make status` (`playbooks/status.yml`, `tasks/status.yml`) changes
 nothing: it lists each image of the enabled stacks as OK or MISSING and each
@@ -475,6 +500,9 @@ when anything is not OK.
   nginx master runs as root (binds 80/443). After a certificate renewal run
   `make api-gateway` to refresh Kong's copy. Upstream certificates are not
   verified (loopback only).
+- RustFS: after a certificate renewal run `make storage` to refresh its copy.
+  Single drive, no redundancy: back up `rustfs_data`. Removing the stack
+  keeps the volume; deleting `rustfs_data` deletes every bucket.
 
 ## 12. Role `os_update` (playbooks/update.yml)
 
@@ -511,6 +539,7 @@ after the update (and after the reboot, if any). Before the first
 | Docs | `make docs-check` | Links, ADR registry, this reference covers all roles/variables/tags |
 | Container | `make test-container` | Full converge and `changed=0` second run in an Ubuntu 24.04 systemd container (arm64 or amd64 per workstation) |
 | Container + stacks | `make test-container ARGS="--with-stacks"` | Also runs `stacks.yml` twice (deploy + `changed=0`) |
+| Container + storage | `make test-container ARGS="--with-storage"` | Also runs `storage.yml` twice (RustFS over HTTPS, `changed=0`) |
 | Container + CI/CD | `make test-container ARGS="--with-ci-cd"` | Also runs `ci-cd.yml` twice (Jenkins images, login, agent online, `changed=0`) |
 | Container + gateway | `make test-container ARGS="--with-api-gateway"` | Also runs `api-gateway.yml` twice (Kong, Portainer route, key-auth, redirect, `changed=0`) |
 | Container + apps | `make test-container ARGS="--with-api-gateway --with-apps"` | Also runs `apps.yml` twice (registry checks, app routes, `changed=0`) |

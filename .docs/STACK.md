@@ -74,6 +74,15 @@ Docker Hub on 2026-10-29.
 |-----------|-------|------------|-----------|
 | Kong Gateway OSS (DB-less) | `kong:3.9.4` | 80 (redirect), 443 (HTTPS, MagicBox CA), host networking | Single entry point `https://magicbox.local/<service>/`; API key for Ollama |
 
+## Object storage stack (playbooks/storage.yml)
+
+Deployed as the Portainer stack `rustfs` (ADR-0018). Version checked on
+GitHub releases on 2026-10-30.
+
+| Component | Image | Port (LAN) | Rationale |
+|-----------|-------|------------|-----------|
+| RustFS | `rustfs/rustfs:1.0.4` | 9100 (S3 API, HTTPS), 9101 (console, HTTPS, `/rustfs/console/`) | S3-compatible buckets with a web console; Apache-2.0, single container, low RAM (MinIO excluded) |
+
 ## Apps (inventory/group_vars/magicbox/apps.yml, git-ignored)
 
 Deployed by their own Jenkins pipelines (jobs created by `make apps` with
@@ -100,7 +109,8 @@ Job DSL) as Portainer stacks; routed by Kong (ADR-0016, ADR-0017).
 | `/opt/magicbox/apps/apps.json` | App name -> host port, written by `make apps`, read by the app pipelines |
 | `/opt/magicbox/stacks/jenkins/casc/apps.yaml` | Job DSL definitions of the app jobs (JCasC), written by `make apps` |
 | `/opt/magicbox/stacks/kong/` | Kong declarative config (with the API key, root 0400), TLS copy |
-| Volumes `rabbitmq_data`, `postgresql_data`, `ollama_data`, `loki_data`, `alloy_data`, `grafana_data` | Stack data (persistent) |
+| `/opt/magicbox/stacks/rustfs/tls/` | RustFS TLS copy (UID 10001, 0400) |
+| Volumes `rabbitmq_data`, `postgresql_data`, `ollama_data`, `loki_data`, `alloy_data`, `grafana_data`, `rustfs_data` | Stack data (persistent) |
 
 ## Network
 
@@ -114,6 +124,7 @@ Job DSL) as Portainer stacks; routed by Kong (ADR-0016, ADR-0017).
 | 5672, 15672 | TCP | RabbitMQ AMQP, management UI | `magicbox_lan_cidr` (DOCKER-USER) |
 | 5432 | TCP | PostgreSQL | `magicbox_lan_cidr` (DOCKER-USER) |
 | 11434 | TCP | Ollama API | `magicbox_lan_cidr` (DOCKER-USER) |
+| 9100, 9101 | TCP | RustFS S3 API, console (HTTPS) | `magicbox_lan_cidr` (DOCKER-USER) |
 | 9000 | TCP | Portainer HTTP | disabled (`--http-disabled`) |
 | 8000 | TCP | Portainer Edge tunnel | blocked (unused) |
 | 2375/2376 | TCP | Docker API | never enabled |

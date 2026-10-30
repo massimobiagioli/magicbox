@@ -2,7 +2,7 @@
 """End-to-end test of playbooks/site.yml against a disposable systemd container.
 
 Usage:
-    uv run tools/container_test.py [--keep] [--with-stacks] [--with-ci-cd] [--with-api-gateway] [--with-apps]
+    uv run tools/container_test.py [--keep] [--with-stacks] [--with-ci-cd] [--with-api-gateway] [--with-storage] [--with-apps]
 
 Builds tests/container/Dockerfile, starts a privileged systemd container named
 `magicbox-test`, runs the playbook twice through tools/idempotency_check.py
@@ -11,6 +11,7 @@ the container unless --keep is given. With --with-stacks it then runs
 playbooks/stacks.yml twice as well (pulls about 4 GB of images); with
 --with-ci-cd it runs playbooks/ci-cd.yml twice (builds the Jenkins images);
 with --with-api-gateway it runs playbooks/api-gateway.yml twice (Kong); with
+--with-storage it runs playbooks/storage.yml twice (RustFS); with
 --with-apps (needs --with-ci-cd --with-api-gateway) it runs playbooks/apps.yml
 twice (app routes in Kong, app jobs in Jenkins).
 Requires a local Docker daemon.
@@ -41,6 +42,7 @@ def main() -> None:
     with_stacks = "--with-stacks" in sys.argv[1:]
     with_ci_cd = "--with-ci-cd" in sys.argv[1:]
     with_api_gateway = "--with-api-gateway" in sys.argv[1:]
+    with_storage = "--with-storage" in sys.argv[1:]
     with_apps = "--with-apps" in sys.argv[1:]
     if with_apps and not (with_ci_cd and with_api_gateway):
         sys.exit("--with-apps needs --with-ci-cd and --with-api-gateway (Jenkins and Kong)")
@@ -83,6 +85,12 @@ def main() -> None:
                 sys.executable, str(ROOT / "tools/idempotency_check.py"),
                 "-i", str(ROOT / "tests/container/hosts.yml"),
                 str(ROOT / "playbooks/api-gateway.yml"),
+            )
+        if with_storage:
+            sh(
+                sys.executable, str(ROOT / "tools/idempotency_check.py"),
+                "-i", str(ROOT / "tests/container/hosts.yml"),
+                str(ROOT / "playbooks/storage.yml"),
             )
         if with_apps:
             sh(

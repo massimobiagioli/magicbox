@@ -1,0 +1,42 @@
+# {{ ansible_managed }}
+# RustFS: S3-compatible object storage (ADR-0018). Both ports serve HTTPS
+# with a copy of the MagicBox certificate: the S3 API, and the web console
+# under /rustfs/console/ (which also answers S3 and admin calls).
+x-config-revision: &config-revision
+  com.magicbox.config-revision: ${MAGICBOX_CONFIG_REVISION}
+
+services:
+  rustfs:
+    image: {{ stacks_rustfs_image }}
+    container_name: rustfs
+    restart: unless-stopped
+    labels: *config-revision
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_TLS_PATH: /opt/tls
+      # Empty: logs go to stdout, where Alloy collects them.
+      RUSTFS_OBS_LOG_DIRECTORY: ""
+    ports:
+      - "{{ stacks_rustfs_api_port }}:9000"
+      - "{{ stacks_rustfs_console_port }}:9001"
+    volumes:
+      - rustfs_data:/data
+      - {{ stacks_base_dir }}/rustfs/tls:/opt/tls:ro
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # Loopback: the certificate names magicbox.local, hence -k.
+      test: ["CMD-SHELL", "curl -fsSk https://127.0.0.1:9000/health && curl -fsSk https://127.0.0.1:9001/rustfs/console/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  rustfs_data:
+    name: rustfs_data

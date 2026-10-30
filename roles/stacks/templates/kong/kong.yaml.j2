@@ -56,6 +56,18 @@ services:
               access:
                 - kong.response.exit(301, nil, { Location = "{{ route.path }}" })
 {% endfor %}
+{% for redirect in stacks_kong_port_redirects %}
+      # UI on its own port (see stacks_kong_port_redirects).
+      - name: {{ redirect.name }}-redirect
+        paths: ["~{{ redirect.path }}/?$"]
+        protocols: [https]
+        https_redirect_status_code: 301
+        plugins:
+          - name: pre-function
+            config:
+              access:
+                - kong.response.exit(301, nil, { Location = "{{ redirect.location }}" })
+{% endfor %}
 
 consumers:
   - username: ollama-client

@@ -101,6 +101,18 @@ stacks_kong_upstream_timeout: 600
 # API key required on /ollama (header or query parameter `apikey`).
 stacks_kong_ollama_api_key: "{{ vault_kong_ollama_api_key | default('') }}"
 
+# --- RustFS object storage stack (playbooks/storage.yml; not in stacks_enabled by default) ---
+# S3-compatible object storage with a web console (ADR-0018), pinned (checked
+# on GitHub releases 2026-10-30).
+stacks_rustfs_image: rustfs/rustfs:1.0.4
+# Host ports, HTTPS with the MagicBox certificate. Not the upstream 9000/9001:
+# port 9000 stays closed (Portainer legacy HTTP, CONSTITUTION).
+stacks_rustfs_api_port: 9100
+stacks_rustfs_console_port: 9101
+# Root credentials, applied at every start (rotation keeps the data).
+stacks_rustfs_access_key: "{{ vault_rustfs_access_key | default('') }}"
+stacks_rustfs_secret_key: "{{ vault_rustfs_secret_key | default('') }}"
+
 # --- Apps (playbooks/apps.yml, ADR-0016/0017) ---
 # Host directory with apps.json (name -> port), read by the app pipelines.
 stacks_apps_dir: /opt/magicbox/apps

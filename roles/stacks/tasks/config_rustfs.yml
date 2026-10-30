@@ -1,0 +1,32 @@
+---
+# RustFS runs as UID 10001 and reads rustfs_cert.pem / rustfs_key.pem from
+# RUSTFS_TLS_PATH.
+- name: Create the RustFS TLS directory
+  ansible.builtin.file:
+    path: "{{ stacks_base_dir }}/rustfs/{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "", owner: root, mode: "0755" }
+    - { path: tls, owner: "10001", mode: "0700" }
+
+- name: Give RustFS a copy of the MagicBox TLS certificate and key
+  ansible.builtin.copy:
+    src: "{{ magicbox_portainer_ca_cert | dirname }}/{{ item.src }}"
+    dest: "{{ stacks_base_dir }}/rustfs/tls/{{ item.dest }}"
+    remote_src: true
+    owner: "10001"
+    group: root
+    mode: "0400"
+  loop:
+    - { src: portainer.crt, dest: rustfs_cert.pem }
+    - { src: portainer.key, dest: rustfs_key.pem }
+  register: stacks_rustfs_tls
+
+- name: Derive a configuration revision that redeploys RustFS when files change
+  ansible.builtin.set_fact:
+    stacks_config_revision: >-
+      {{ (stacks_rustfs_tls.results | map(attribute='checksum') | join(','))
+         | hash('sha256') | truncate(16, true, '') }}
