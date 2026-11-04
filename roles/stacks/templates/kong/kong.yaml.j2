@@ -28,6 +28,13 @@ services:
               # The key is not forwarded to the upstream.
               hide_credentials: true
 {% endif %}
+{% if route.basic_auth | default(false) %}
+        plugins:
+          - name: basic-auth
+            config:
+              # The Authorization header is not forwarded to the upstream.
+              hide_credentials: true
+{% endif %}
 {% endfor %}
 
   # Redirects only; the upstream is never contacted.
@@ -57,7 +64,7 @@ services:
                 - kong.response.exit(301, nil, { Location = "{{ route.path }}" })
 {% endfor %}
 {% for redirect in stacks_kong_port_redirects %}
-      # UI on its own port (see stacks_kong_port_redirects).
+      # UI on its own port or entry page (see stacks_kong_port_redirects).
       - name: {{ redirect.name }}-redirect
         paths: ["~{{ redirect.path }}/?$"]
         protocols: [https]
@@ -73,3 +80,8 @@ consumers:
   - username: ollama-client
     keyauth_credentials:
       - key: {{ stacks_kong_ollama_api_key | to_json }}
+  # Login of the Dkron UI and API (Dkron OSS has none).
+  - username: dkron-admin
+    basicauth_credentials:
+      - username: {{ stacks_dkron_user | to_json }}
+        password: {{ stacks_dkron_password | to_json }}

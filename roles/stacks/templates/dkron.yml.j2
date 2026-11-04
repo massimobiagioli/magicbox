@@ -1,0 +1,35 @@
+# {{ ansible_managed }}
+# Dkron: distributed cron with a web UI (ADR-0022), one server node. Host
+# networking, every port on the loopback: jobs reach the apps on
+# 127.0.0.1:<port> and the gateway on https://{{ magicbox_hostname }}.local/;
+# Kong serves the UI and API at /dkron/ with a login (Dkron OSS has none).
+services:
+  dkron:
+    image: {{ stacks_dkron_image }}
+    container_name: dkron
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - agent
+      - --server
+      - --bootstrap-expect=1
+      - --node-name={{ magicbox_hostname }}
+      - --data-dir=/dkron.data
+      - --bind-addr=127.0.0.1:{{ stacks_dkron_serf_port }}
+      - --advertise-addr=127.0.0.1
+      - --rpc-port={{ stacks_dkron_rpc_port }}
+      - --http-addr=127.0.0.1:{{ stacks_dkron_port }}
+    volumes:
+      - dkron_data:/dkron.data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:{{ stacks_dkron_port }}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  dkron_data:
+    name: dkron_data

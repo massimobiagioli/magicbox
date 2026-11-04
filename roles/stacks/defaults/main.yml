@@ -9,6 +9,7 @@ stacks_enabled:
   - observability
   - rustfs
   - registry
+  - dkron
   - jenkins
   - kong
 
@@ -146,6 +147,19 @@ stacks_registry_ui_port: 5001
 # Push/pull credentials (htpasswd); the password is rehashed when it changes.
 stacks_registry_user: magicbox
 stacks_registry_password: "{{ vault_registry_password | default('') }}"
+
+# --- Dkron scheduler stack (ADR-0022) ---
+# Distributed cron with a web UI, one server node, pinned (checked on Docker
+# Hub 2026-11-04). Host networking on the loopback: jobs reach the apps on
+# 127.0.0.1:<port> and the gateway on https://magicbox.local/.
+stacks_dkron_image: dkron/dkron:4.2.1
+# Loopback ports: HTTP API and UI (served by Kong at /dkron/), Serf, RPC/Raft.
+stacks_dkron_port: 8090
+stacks_dkron_serf_port: 8946
+stacks_dkron_rpc_port: 6868
+# Dkron OSS has no login: Kong asks for this one (basic-auth) on /dkron/.
+stacks_dkron_user: admin
+stacks_dkron_password: "{{ vault_dkron_password | default('') }}"
 
 # --- Apps (playbooks/site.yml, ADR-0016/0017) ---
 # Host directory with apps.json (name -> port), read by the app pipelines.

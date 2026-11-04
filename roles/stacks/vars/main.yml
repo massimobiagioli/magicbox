@@ -23,6 +23,8 @@ stacks_env:
     RUSTFS_SECRET_KEY: "{{ stacks_rustfs_secret_key }}"
   # The registry reads its password hash from a file (config_registry.yml).
   registry: {}
+  # Dkron has no secrets; its login lives in Kong (kong.yaml).
+  dkron: {}
 
 # Passwords each stack needs (checked before deployment).
 stacks_required_secrets:
@@ -31,9 +33,10 @@ stacks_required_secrets:
   ollama: [stacks_openwebui_secret_key, stacks_openwebui_admin_password]
   observability: [stacks_grafana_admin_password]
   jenkins: [stacks_jenkins_admin_password]
-  kong: [stacks_kong_ollama_api_key]
+  kong: [stacks_kong_ollama_api_key, stacks_dkron_password]
   rustfs: [stacks_rustfs_access_key, stacks_rustfs_secret_key]
   registry: [stacks_registry_password]
+  dkron: []
 
 # Containers created by each stack (used by verification).
 stacks_containers:
@@ -45,6 +48,7 @@ stacks_containers:
   kong: [kong]
   rustfs: [rustfs]
   registry: [registry, registry-ui]
+  dkron: [dkron]
 
 stacks_images:
   rabbitmq: ["{{ stacks_rabbitmq_image }}"]
@@ -55,6 +59,7 @@ stacks_images:
   kong: ["{{ stacks_kong_image }}"]
   rustfs: ["{{ stacks_rustfs_image }}"]
   registry: ["{{ stacks_registry_image }}", "{{ stacks_registry_ui_image }}"]
+  dkron: ["{{ stacks_dkron_image }}"]
 
 # Jenkins images built on MagicBox. The tag carries a hash of the build files,
 # so changing a base image, plugin or script yields a new tag, a new build and
@@ -132,6 +137,16 @@ stacks_kong_routes:
     preserve_host: false
     check: /registry/
     container: registry-ui
+  # Dkron UI (/dkron/ui/) and API (/dkron/v1/); no login of its own, so the
+  # gateway requires the Dkron credentials (ADR-0022).
+  - name: dkron
+    path: /dkron/
+    url: "http://127.0.0.1:{{ stacks_dkron_port }}"
+    strip: true
+    preserve_host: false
+    check: /dkron/health
+    container: dkron
+    basic_auth: true
 
 # Routes of the apps in the registry (magicbox_apps, ADR-0016): /<name>
 # -> 127.0.0.1:<port>, prefix stripped, so the app serves from "/".
@@ -148,7 +163,7 @@ stacks_kong_all_routes: "{{ stacks_kong_routes + stacks_kong_app_routes }}"
 # Gateway paths that redirect (301) to a UI on its own port, for UIs that
 # cannot live under a gateway path: the RustFS console sends its S3 and admin
 # calls to the page's origin (ADR-0018); Open WebUI uses absolute paths
-# (ADR-0019).
+# (ADR-0019). Also entry pages under a gateway path (Dkron, ADR-0022).
 stacks_kong_port_redirects:
   - name: rustfs
     path: /rustfs
@@ -156,6 +171,11 @@ stacks_kong_port_redirects:
   - name: openwebui
     path: /openwebui
     location: "https://{{ magicbox_hostname }}.local:{{ stacks_openwebui_port }}/"
+  # Not another port: Dkron's "/" answers 303 to the absolute path /ui/,
+  # which would leave the gateway prefix.
+  - name: dkron
+    path: /dkron
+    location: /dkron/ui/
 
 # Host ports an app must not use (services, gateway, Kong admin/status).
 stacks_reserved_ports: >-
@@ -163,6 +183,7 @@ stacks_reserved_ports: >-
       stacks_ollama_port, stacks_openwebui_port, stacks_grafana_port, stacks_jenkins_port,
       stacks_kong_http_port, stacks_kong_https_port, stacks_rustfs_api_port, stacks_rustfs_console_port,
       stacks_registry_port, stacks_registry_ui_port,
+      stacks_dkron_port, stacks_dkron_serf_port, stacks_dkron_rpc_port,
       magicbox_portainer_api_url | urlsplit('port'), 8001, 8100]
      | map('int') | list }}
 

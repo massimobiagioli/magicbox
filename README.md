@@ -3,7 +3,7 @@
 Ansible setup for a GMKtec Intel Mini PC: Docker and Portainer CE, served on
 the LAN at **https://magicbox.local:9443/**, plus stacks: RabbitMQ,
 PostgreSQL, Ollama + Open WebUI, Grafana + Loki + Alloy, RustFS (S3 object
-storage), a Docker registry, Jenkins (CI/CD) and a Kong API gateway at
+storage), a Docker registry, Dkron (scheduled jobs), Jenkins (CI/CD) and a Kong API gateway at
 **https://magicbox.local/**. One idempotent command installs everything.
 
 ## Quick start
@@ -34,6 +34,7 @@ Apps come from the apps registry `inventory/group_vars/magicbox/apps.yml`
 | RustFS console | `https://magicbox.local/rustfs` (redirect) | `https://magicbox.local:9101/rustfs/console/` | `vault_rustfs_access_key` / `vault_rustfs_secret_key` |
 | RustFS S3 API | - (signed paths, ADR-0018) | `https://magicbox.local:9100` (path-style, region `us-east-1`) | same keys as the console |
 | Docker registry | `https://magicbox.local/registry/` (UI) | `https://magicbox.local:5000/v2/` (`docker login magicbox.local:5000`) | `magicbox` / `vault_registry_password` |
+| Dkron (scheduler) | `https://magicbox.local/dkron/` (UI), `/dkron/v1/` (API) | - (loopback only) | `admin` / `vault_dkron_password` |
 | RabbitMQ AMQP | - | `amqp://magicbox.local:5672` | as RabbitMQ UI |
 | PostgreSQL | - | `magicbox.local:5432`, database `magicbox` | `magicbox` / `vault_postgresql_password` |
 

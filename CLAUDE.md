@@ -59,7 +59,7 @@ make test-container ARGS="--stacks registry,jenkins,kong"  # only these stacks (
 
 ## Layout
 
-- `playbooks/site.yml` - the whole installation (`make deploy`): host + Portainer roles, controller verification, every stack (RabbitMQ, PostgreSQL, Ollama + Open WebUI, Grafana/Loki/Alloy, RustFS, Docker registry, Jenkins, Kong), apps registry -> Jenkins jobs (Job DSL), `/opt/magicbox/apps/apps.json`
+- `playbooks/site.yml` - the whole installation (`make deploy`): host + Portainer roles, controller verification, every stack (RabbitMQ, PostgreSQL, Ollama + Open WebUI, Grafana/Loki/Alloy, RustFS, Docker registry, Dkron, Jenkins, Kong), apps registry -> Jenkins jobs (Job DSL), `/opt/magicbox/apps/apps.json`
 - `playbooks/status.yml` - read-only stack status (images, containers)
 - `playbooks/update.yml` - OS package update (apt update + upgrade), optional reboot
 - `roles/` - `preflight`, `mdns`, `firewall`, `docker`, `portainer`, `portainer_init`, `stacks`, `os_update`
@@ -101,6 +101,7 @@ make test-container ARGS="--stacks registry,jenkins,kong"  # only these stacks (
   - [ADR-0019](.docs/adr/adr-0019.md) - Open WebUI in the Ollama stack, on its own HTTPS port
   - [ADR-0020](.docs/adr/adr-0020.md) - Private Docker registry on MagicBox for app images
   - [ADR-0021](.docs/adr/adr-0021.md) - One idempotent `make deploy` for the whole infrastructure
+  - [ADR-0022](.docs/adr/adr-0022.md) - Dkron for scheduled jobs between services
 
 ## Manuals
 

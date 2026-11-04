@@ -96,6 +96,15 @@ Docker Hub on 2026-11-04.
 | Registry UI | `joxit/docker-registry-ui:2.6.0` | `127.0.0.1:5001`, through Kong at `/registry/` | Browse images and tags, delete tags; static nginx app, proxies `/v2` to the registry |
 | htpasswd (helper, not a service) | `httpd:2.4.69-alpine` | none (`--network none`, removed after use) | bcrypt hash and check of the registry password |
 
+## Scheduler stack
+
+Deployed as the Portainer stack `dkron` (ADR-0022). Tag checked on Docker
+Hub on 2026-11-04.
+
+| Component | Image | Port | Rationale |
+|-----------|-------|------|-----------|
+| Dkron (one server node) | `dkron/dkron:4.2.1` | `127.0.0.1:8090` (host networking), through Kong at `/dkron/` with basic-auth | Cron for the services with UI, API, history; HTTP, shell, RabbitMQ executors |
+
 ## Apps (inventory/group_vars/magicbox/apps.yml, git-ignored)
 
 Deployed by their own Jenkins pipelines (jobs created by `make deploy` with
@@ -126,7 +135,7 @@ Job DSL) as Portainer stacks; routed by Kong (ADR-0016, ADR-0017).
 | `/opt/magicbox/stacks/registry/` | Registry TLS copy, `auth/htpasswd` (bcrypt, root 0400) |
 | `/etc/docker/certs.d/magicbox.local:5000/ca.crt` | MagicBox CA trusted by the local Docker engine for the registry |
 | `/opt/magicbox/stacks/ollama/tls/` | Open WebUI TLS copy (root 0400) |
-| Volumes `rabbitmq_data`, `postgresql_data`, `ollama_data`, `open_webui_data`, `loki_data`, `alloy_data`, `grafana_data`, `rustfs_data`, `registry_data`, `jenkins_home` | Stack data (persistent) |
+| Volumes `rabbitmq_data`, `postgresql_data`, `ollama_data`, `open_webui_data`, `loki_data`, `alloy_data`, `grafana_data`, `rustfs_data`, `registry_data`, `dkron_data`, `jenkins_home` | Stack data (persistent) |
 
 ## Network
 

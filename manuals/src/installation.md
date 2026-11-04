@@ -130,7 +130,8 @@ controller$ make vault-edit          # creates the encrypted vault on first use
       different values of 12+ characters: `vault_portainer_admin_password`,
       `vault_postgresql_password`, `vault_rabbitmq_password`,
       `vault_grafana_admin_password`, `vault_openwebui_admin_password`,
-      `vault_jenkins_admin_password`, `vault_registry_password`;
+      `vault_jenkins_admin_password`, `vault_registry_password`,
+      `vault_dkron_password`;
       `vault_openwebui_secret_key` (`openssl rand -hex 32`),
       `vault_kong_ollama_api_key` (`openssl rand -hex 24`),
       `vault_rustfs_access_key` (`openssl rand -hex 12`),
@@ -304,6 +305,23 @@ Free disk space after deleting tags:
 magicbox$ sudo docker exec registry registry garbage-collect /etc/distribution/config.yml
 ```
 
+### 4.6 Scheduler (Dkron)
+
+- [ ] `https://magicbox.local/dkron/` opens the Dkron UI after the login
+      `admin` / `vault_dkron_password`.
+- [ ] A test job runs (UI: *Jobs > Create*, or the API):
+
+```text
+controller$ curl -u admin -H 'Content-Type: application/json' https://magicbox.local/dkron/v1/jobs \
+  -d '{"name":"smoke","schedule":"@every 1m","executor":"shell","executor_config":{"command":"echo ok"}}'
+```
+
+- [ ] After a minute the job `smoke` shows a successful execution; delete it.
+- [ ] HTTP jobs call apps on `http://127.0.0.1:<port>/...` (port from the
+      apps registry), executor `http`.
+
+Rotate the password: `make vault-edit`, `make deploy`, update the clients.
+
 ## 5. Verification
 
 ```text
@@ -320,7 +338,7 @@ controller$ uv run tools/idempotency_check.py playbooks/site.yml --vault-passwor
 - [ ] `sudo reboot` on MagicBox: the page comes back, settings kept.
 - [ ] `magicbox$ sudo ss -ltn | grep -E ':(9000|2375|2376) '` prints nothing.
 - [ ] Portainer > Environments shows `homelab`; Stacks shows `rabbitmq`,
-      `postgresql`, `ollama`, `observability`, `rustfs`, `registry`,
+      `postgresql`, `ollama`, `observability`, `rustfs`, `registry`, `dkron`,
       `jenkins`, `kong`.
 - [ ] `make status` reports every image and container as OK.
 
@@ -339,6 +357,7 @@ Services (from the LAN):
 | Ollama API | `http://magicbox.local:11434/` | `https://magicbox.local/ollama/` | direct: none (LAN only); gateway: header `apikey` |
 | Jenkins | `https://magicbox.local:8443/jenkins/` | `https://magicbox.local/jenkins/` | `admin` / `vault_jenkins_admin_password` |
 | Docker registry | `https://magicbox.local:5000/v2/` (`docker login magicbox.local:5000`) | `https://magicbox.local/registry/` (UI) | `magicbox` / `vault_registry_password` |
+| Dkron (scheduler UI and API) | - (loopback `127.0.0.1:8090`) | `https://magicbox.local/dkron/` (UI), `/dkron/v1/` (API) | `admin` / `vault_dkron_password` |
 | Tester App (4.3) | - | `https://magicbox.local/tester-app` | none |
 
 - [ ] Grafana > Explore > Loki: `{container="postgresql"}` shows logs.
@@ -454,7 +473,7 @@ magicbox$ sudo docker start portainer
 
 Stack data lives in the volumes `postgresql_data`, `rabbitmq_data`,
 `grafana_data`, `loki_data`, `ollama_data`, `open_webui_data` (chats,
-users), `rustfs_data` (buckets), `registry_data` (images) and
+users), `rustfs_data` (buckets), `registry_data` (images), `dkron_data` (jobs) and
 `jenkins_home` under
 `/var/lib/docker/volumes/`.
 Stop the stack in Portainer before copying a volume. For PostgreSQL, prefer

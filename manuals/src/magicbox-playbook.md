@@ -115,6 +115,7 @@ Defined in `inventory/hosts.yml` (environment facts) or
 | `magicbox_apps` | `[]` (`inventory/group_vars/magicbox/apps.yml`) | Apps (ADR-0016, ADR-0017): `name` (Jenkins job, Portainer stack, container, URL path `/<name>`), `port` (host port on `127.0.0.1`, 18000-18999), `repo` (`https://github.com/<owner>/<repository>`). Maintained by `tools/new_app.py`. |
 | `vault_rustfs_access_key`, `vault_rustfs_secret_key` | required for the RustFS stack (vault) | At least 12 characters each; RustFS root credentials (console login, S3 keys), applied at every start. |
 | `vault_kong_ollama_api_key` | required for the Kong stack (vault) | At least 12 characters; API key for `https://magicbox.local/ollama/` (header or query parameter `apikey`). |
+| `vault_dkron_password` | required for the Kong stack (vault) | At least 12 characters; login `admin` of `https://magicbox.local/dkron/` (Kong `basic-auth`). |
 | `vault_registry_password` | required for the registry stack (vault) | At least 12 characters; registry login of `stacks_registry_user` and Jenkins credential `registry`. |
 
 ## 5. Role `preflight`
@@ -323,11 +324,12 @@ redeploy when they change.
 | `rustfs` | rustfs | 9100 (S3 API), 9101 (console under `/rustfs/console/`), both HTTPS | rustfs_data |
 | `registry` | registry, registry-ui | 5000 (registry API, HTTPS); UI on `127.0.0.1:5001`, under `/registry/` | registry_data |
 | `jenkins` | jenkins, jenkins-agent | 8443 (Jenkins HTTPS, under `/jenkins/`) | jenkins_home, jenkins_agent_work |
+| `dkron` | dkron | none: host networking, `127.0.0.1` 8090 (UI/API, under `/dkron/`), 8946, 6868 | dkron_data |
 | `kong` | kong | 80, 443 (host networking, ufw) | none (DB-less) |
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `stacks_enabled` | rabbitmq, postgresql, ollama, observability, rustfs, registry, jenkins, kong | Stacks to manage, in this order. Removing one does not delete it. |
+| `stacks_enabled` | rabbitmq, postgresql, ollama, observability, rustfs, registry, dkron, jenkins, kong | Stacks to manage, in this order. Removing one does not delete it. |
 | `stacks_base_dir` | `/opt/magicbox/stacks` | Host directory for mounted config files. |
 | `stacks_rabbitmq_image` | `rabbitmq:4.3.7-management` | RabbitMQ image. |
 | `stacks_postgresql_image` | `postgres:18.6` | PostgreSQL image (newest major, supported to 2030). |
@@ -385,6 +387,12 @@ redeploy when they change.
 | `stacks_registry_port` | `5000` | Host port for the registry API (HTTPS, MagicBox certificate). |
 | `stacks_registry_ui_port` | `5001` | Loopback HTTP port of the registry UI (reached through Kong). |
 | `stacks_registry_user` | `magicbox` | Registry login user (push and pull). |
+| `stacks_dkron_image` | `dkron/dkron:4.2.1` | Dkron image (scheduler with UI, ADR-0022). |
+| `stacks_dkron_port` | `8090` | Loopback HTTP port of the Dkron UI and API (reached through Kong at `/dkron/`). |
+| `stacks_dkron_serf_port` | `8946` | Loopback Serf port (cluster membership). |
+| `stacks_dkron_rpc_port` | `6868` | Loopback RPC/Raft port. |
+| `stacks_dkron_user` | `admin` | Login user of `/dkron/` (Kong basic-auth). |
+| `stacks_dkron_password` | `{{ vault_dkron_password }}` | Login password of `/dkron/`; required by the Kong stack. |
 | `stacks_registry_password` | `{{ vault_registry_password }}` | Registry password; the htpasswd file is rewritten only when it no longer matches. |
 
 Internal data (`roles/stacks/vars/main.yml`, not meant to be overridden):
@@ -439,6 +447,8 @@ status on `127.0.0.1:8100`, Kong Manager off.
 | `/rabbitmq/` | RabbitMQ 15672 (`management.path_prefix`) | kept | RabbitMQ login |
 | `/ollama/` | Ollama 11434 (API, no UI) | stripped | header/query `apikey` = `vault_kong_ollama_api_key` |
 | `/registry/` | Registry UI 5001 (HTTP; proxies `/v2` to the registry) | stripped | registry login (Basic, from the registry) |
+| `/dkron/` | Dkron 8090 (UI `/ui/`, API `/v1/`) | stripped | basic-auth `admin` / `vault_dkron_password` (Kong) |
+| `/dkron`, `/dkron/` (exact) | - | 301 to `/dkron/ui/` | - |
 | `/<name>` (each app in `magicbox_apps`) | app `<port>` (HTTP) | stripped | app's own |
 | `/rustfs`, `/rustfs/` | - | 301 to `https://magicbox.local:9101/rustfs/console/` | - |
 | `/openwebui`, `/openwebui/` | - | 301 to `https://magicbox.local:8444/` (ADR-0019) | - |
@@ -494,6 +504,14 @@ Verification: `/v2/` over HTTPS with the MagicBox CA refuses anonymous access
 client config, removed). Free disk space after deleting tags:
 `sudo docker exec registry registry garbage-collect /etc/distribution/config.yml`.
 
+**Scheduler (ADR-0022).** Dkron, one server node, host networking with
+every listener on `127.0.0.1` (HTTP `stacks_dkron_port`, Serf, RPC), data in
+`dkron_data`. Dkron OSS has no login: Kong's `basic-auth` (consumer
+`dkron-admin`) protects `/dkron/` and does not forward the credentials. HTTP
+jobs call apps on `127.0.0.1:<port>`. Verification: `/health` reports a
+leader; through the gateway `/dkron/health` answers with the login and
+`/dkron/v1/jobs` gets 401 without it.
+
 **Status.** `make status` (`playbooks/status.yml`, `tasks/status.yml`) changes
 nothing: it lists each image of the enabled stacks as OK or MISSING and each
 container as OK, NOT OK (stopped, restarting, unhealthy) or MISSING, and fails
@@ -529,6 +547,8 @@ when anything is not OK.
   verified (loopback only).
 - RustFS: single drive, no redundancy: back up `rustfs_data`. Removing the stack
   keeps the volume; deleting `rustfs_data` deletes every bucket.
+- Dkron: its login allows shell jobs as root in a host-network container;
+  treat `vault_dkron_password` as an admin credential.
 - Registry: anyone with `vault_registry_password` can push images that a
   pipeline may deploy. LAN clients must trust the MagicBox CA for
   `magicbox.local:5000`. Deleting `registry_data` deletes every image.

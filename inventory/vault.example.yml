@@ -39,3 +39,7 @@ vault_rustfs_secret_key: ""
 # 12 characters, e.g. `openssl rand -hex 24`); also the Jenkins credential
 # `registry`. Changing it rehashes the registry password file.
 vault_registry_password: ""
+
+# Scheduler (Dkron). Password of user `admin` on https://magicbox.local/dkron/
+# (UI and API; Kong checks it), at least 12 characters.
+vault_dkron_password: ""

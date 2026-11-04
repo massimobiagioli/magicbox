@@ -28,3 +28,4 @@ Consequences, then list it here and in [CLAUDE.md](../../CLAUDE.md).
 | [ADR-0019](adr-0019.md) | Open WebUI in the Ollama stack, on its own HTTPS port | Accepted |
 | [ADR-0020](adr-0020.md) | Private Docker registry on MagicBox for app images | Accepted |
 | [ADR-0021](adr-0021.md) | One idempotent `make deploy` for the whole infrastructure | Accepted |
+| [ADR-0022](adr-0022.md) | Dkron for scheduled jobs between services | Accepted |

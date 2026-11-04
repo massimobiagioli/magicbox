@@ -179,6 +179,17 @@
         state: absent
       changed_when: false
 
+- name: Check Dkron has elected itself leader
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ stacks_dkron_port }}/health"
+  register: stacks_dkron_health
+  retries: 20
+  delay: 3
+  until:
+    - stacks_dkron_health.status == 200
+    - stacks_dkron_health.json.leader | default(false)
+  when: "'dkron' in stacks_enabled"
+
 - name: Check that Loki receives container logs shipped by Alloy (via Grafana)
   ansible.builtin.uri:
     url: >-
@@ -256,7 +267,10 @@
   ansible.builtin.uri:
     url: "https://{{ magicbox_hostname }}.local:{{ stacks_kong_https_port }}{{ item.check }}"
     ca_path: "{{ magicbox_portainer_ca_cert }}"
-    headers: "{{ {'apikey': stacks_kong_ollama_api_key} if item.key_auth | default(false) else {} }}"
+    headers: >-
+      {{ {'apikey': stacks_kong_ollama_api_key} if item.key_auth | default(false)
+         else {'Authorization': 'Basic ' ~ (stacks_dkron_user ~ ':' ~ stacks_dkron_password) | b64encode}
+         if item.basic_auth | default(false) else {} }}
   loop: >-
     {{ stacks_kong_all_routes | selectattr('container', 'in',
        stacks_kong_upstreams.results | default([]) | selectattr('exists', 'defined')
@@ -273,6 +287,13 @@
 - name: Check the gateway refuses /ollama without the API key
   ansible.builtin.uri:
     url: "https://{{ magicbox_hostname }}.local:{{ stacks_kong_https_port }}/ollama/api/version"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    status_code: 401
+  when: "'kong' in stacks_enabled"
+
+- name: Check the gateway refuses /dkron/ without the Dkron login
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_kong_https_port }}/dkron/v1/jobs"
     ca_path: "{{ magicbox_portainer_ca_cert }}"
     status_code: 401
   when: "'kong' in stacks_enabled"
@@ -304,7 +325,7 @@
   register: stacks_kong_port_redirect
   failed_when: >-
     stacks_kong_port_redirect.status != 301
-    or stacks_kong_port_redirect.location != item.location
+    or not stacks_kong_port_redirect.location is search(item.location | regex_escape ~ '$')
   when: "'kong' in stacks_enabled"
 
 - name: Check the gateway redirects HTTP to HTTPS

@@ -19,8 +19,8 @@ In scope:
   (`portainer` role), initialised with the `homelab` site environment
   (`portainer_init` role).
 - Portainer stacks: RabbitMQ, PostgreSQL, Ollama + Open WebUI, Grafana +
-  Loki + Alloy, and, by their ADRs, Jenkins, Kong, RustFS and a Docker
-  registry (`stacks` role). Everything is installed by one idempotent
+  Loki + Alloy, and, by their ADRs, Jenkins, Kong, RustFS, a Docker
+  registry and Dkron (`stacks` role). Everything is installed by one idempotent
   `make deploy` (`playbooks/site.yml`, ADR-0021).
 - Controller tooling (uv, `.venv`, Ansible), project tools, tests,
   documentation, ADRs and PDF manuals.
@@ -99,4 +99,4 @@ The infrastructure is accepted when all of the following hold:
 | 6 | After `sudo reboot`, criterion 5 holds again without manual action and Portainer settings are preserved | LAN client |
 | 7 | From outside `magicbox_lan_cidr`, ports 22 and 9443 are unreachable; port 9000 is closed everywhere | Network test |
 | 8 | The stacks of `make deploy` pass their `verify` tasks (containers healthy, PostgreSQL ready, RabbitMQ and Ollama APIs, Grafana over HTTPS, Loki receives logs, registry login) and a second run reports `changed=0` | MagicBox |
-| 9 | Portainer shows the `homelab` environment with the stacks `rabbitmq`, `postgresql`, `ollama`, `observability`, `rustfs`, `registry`, `jenkins`, `kong` | LAN client |
+| 9 | Portainer shows the `homelab` environment with the stacks `rabbitmq`, `postgresql`, `ollama`, `observability`, `rustfs`, `registry`, `dkron`, `jenkins`, `kong` | LAN client |
