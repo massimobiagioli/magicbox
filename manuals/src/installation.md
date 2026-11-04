@@ -204,8 +204,8 @@ controller$ make deploy            # adds credentials "github" and "portainer-ap
 - [ ] `https://magicbox.local/` opens Portainer (redirect to `/portainer/`).
 - [ ] `https://magicbox.local/grafana`, `/rabbitmq`, `/jenkins` (with or
       without the final `/`) open their login page.
-- [ ] `https://magicbox.local/openwebui`, `/rustfs`, `/registry` redirect to
-      their own ports.
+- [ ] `https://magicbox.local/openwebui` and `/rustfs` redirect to their own
+      ports; `/registry/` opens the registry UI.
 - [ ] Ollama (API only, no UI) answers with the key, `401` without it:
 
 ```text
@@ -272,6 +272,8 @@ Jenkins agent) already trusts the registry; app pipelines push there and
 Portainer pulls from there.
 
 - [ ] Portainer > Registries lists `magicbox` (`magicbox.local:5000`).
+- [ ] `https://magicbox.local/registry/` opens the registry UI; log in as
+      `magicbox` / `vault_registry_password`; images and tags are listed.
 
 - [ ] Each LAN client that pushes or pulls trusts the CA for the registry
       (section 6 for the system store, plus on Linux):
@@ -336,7 +338,7 @@ Services (from the LAN):
 | Open WebUI | `https://magicbox.local:8444/` | `https://magicbox.local/openwebui` (redirect) | `admin@magicbox.local` / `vault_openwebui_admin_password` |
 | Ollama API | `http://magicbox.local:11434/` | `https://magicbox.local/ollama/` | direct: none (LAN only); gateway: header `apikey` |
 | Jenkins | `https://magicbox.local:8443/jenkins/` | `https://magicbox.local/jenkins/` | `admin` / `vault_jenkins_admin_password` |
-| Docker registry | `https://magicbox.local:5000/v2/` (`docker login magicbox.local:5000`) | `https://magicbox.local/registry` (redirect) | `magicbox` / `vault_registry_password` |
+| Docker registry | `https://magicbox.local:5000/v2/` (`docker login magicbox.local:5000`) | `https://magicbox.local/registry/` (UI) | `magicbox` / `vault_registry_password` |
 | Tester App (4.3) | - | `https://magicbox.local/tester-app` | none |
 
 - [ ] Grafana > Explore > Loki: `{container="postgresql"}` shows logs.

@@ -133,11 +133,16 @@ stacks_rustfs_secret_key: "{{ vault_rustfs_secret_key | default('') }}"
 # CNCF Distribution, pinned (checked on Docker Hub 2026-11-04). Images are
 # pushed as magicbox.local:<port>/<name>:<tag>.
 stacks_registry_image: registry:3.1.2
+# Web UI of the registry (browse, delete tags), served through the gateway
+# at /registry/ (checked on Docker Hub 2026-11-04).
+stacks_registry_ui_image: joxit/docker-registry-ui:2.6.0
 # Only runs `htpasswd` to hash and check the registry password (bcrypt).
 stacks_registry_htpasswd_image: httpd:2.4.69-alpine
 # Host port, HTTPS with the MagicBox certificate. The MagicBox Docker engine
 # trusts the MagicBox CA for it (/etc/docker/certs.d).
 stacks_registry_port: 5000
+# Loopback HTTP port of the registry UI (Kong serves it over HTTPS).
+stacks_registry_ui_port: 5001
 # Push/pull credentials (htpasswd); the password is rehashed when it changes.
 stacks_registry_user: magicbox
 stacks_registry_password: "{{ vault_registry_password | default('') }}"

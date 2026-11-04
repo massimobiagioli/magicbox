@@ -93,6 +93,7 @@ Docker Hub on 2026-11-04.
 | Component | Image | Port (LAN) | Rationale |
 |-----------|-------|------------|-----------|
 | Docker registry (CNCF Distribution) | `registry:3.1.2` | 5000 (HTTPS, MagicBox CA, htpasswd login) | Private images on the LAN for the apps; single container |
+| Registry UI | `joxit/docker-registry-ui:2.6.0` | `127.0.0.1:5001`, through Kong at `/registry/` | Browse images and tags, delete tags; static nginx app, proxies `/v2` to the registry |
 | htpasswd (helper, not a service) | `httpd:2.4.69-alpine` | none (`--network none`, removed after use) | bcrypt hash and check of the registry password |
 
 ## Apps (inventory/group_vars/magicbox/apps.yml, git-ignored)

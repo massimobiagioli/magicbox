@@ -1,7 +1,8 @@
 # {{ ansible_managed }}
 # Docker registry (CNCF Distribution, ADR-0020): HTTPS with a copy of the
 # MagicBox certificate, htpasswd login for push and pull. Images are
-# addressed as {{ magicbox_hostname }}.local:{{ stacks_registry_port }}/<name>:<tag>.
+# addressed as {{ stacks_registry_address }}/<name>:<tag>.
+# registry-ui: web UI on the loopback, served by Kong at /registry/.
 x-config-revision: &config-revision
   com.magicbox.config-revision: ${MAGICBOX_CONFIG_REVISION}
 
@@ -33,6 +34,36 @@ services:
       # "/" answers 200 without login. Loopback: the certificate names
       # magicbox.local, hence --no-check-certificate.
       test: ["CMD", "wget", "-q", "--no-check-certificate", "-O", "/dev/null", "https://127.0.0.1:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  registry-ui:
+    image: {{ stacks_registry_ui_image }}
+    container_name: registry-ui
+    restart: unless-stopped
+    depends_on: [registry]
+    environment:
+      SINGLE_REGISTRY: "true"
+      REGISTRY_TITLE: MagicBox registry
+      # The browser asks for the registry login (Basic auth, passed through).
+      REGISTRY_SECURED: "true"
+      PULL_URL: {{ stacks_registry_address }}
+      DELETE_IMAGES: "true"
+      SHOW_CONTENT_DIGEST: "true"
+      # /v2 is proxied to the registry on the stack network. Its certificate
+      # names magicbox.local, not "registry"; nginx does not verify it
+      # (traffic stays on the host).
+      NGINX_PROXY_PASS_URL: https://registry:5000
+      # Docker DNS at request time: the UI starts even before the registry.
+      NGINX_RESOLVER: 127.0.0.11 valid=30s
+    ports:
+      - "127.0.0.1:{{ stacks_registry_ui_port }}:80"
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
       interval: 30s
       timeout: 10s
       retries: 5

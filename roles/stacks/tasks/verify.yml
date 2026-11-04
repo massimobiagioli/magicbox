@@ -144,6 +144,19 @@
   when: "'registry' in stacks_enabled"
   no_log: true
 
+- name: Check the registry UI reaches the registry with the vault credentials
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ stacks_registry_ui_port }}/v2/_catalog"
+    url_username: "{{ stacks_registry_user }}"
+    url_password: "{{ stacks_registry_password }}"
+    force_basic_auth: true
+  register: stacks_registry_ui_catalog
+  retries: 10
+  delay: 3
+  until: stacks_registry_ui_catalog.status == 200
+  when: "'registry' in stacks_enabled"
+  no_log: true
+
 # The engine itself logs in: proves it resolves magicbox.local and trusts the
 # CA, as pushes from the Jenkins agent need. The throwaway client config is
 # removed, so no credentials stay on the host.

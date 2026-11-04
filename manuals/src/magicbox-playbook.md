@@ -321,7 +321,7 @@ redeploy when they change.
 | `ollama` | ollama, open-webui | 11434 (API), 8444 (Open WebUI, HTTPS) | ollama_data, open_webui_data |
 | `observability` | grafana, loki, alloy | 3000 (Grafana HTTPS, under `/grafana/`) | grafana_data, loki_data, alloy_data |
 | `rustfs` | rustfs | 9100 (S3 API), 9101 (console under `/rustfs/console/`), both HTTPS | rustfs_data |
-| `registry` | registry | 5000 (registry API, HTTPS) | registry_data |
+| `registry` | registry, registry-ui | 5000 (registry API, HTTPS); UI on `127.0.0.1:5001`, under `/registry/` | registry_data |
 | `jenkins` | jenkins, jenkins-agent | 8443 (Jenkins HTTPS, under `/jenkins/`) | jenkins_home, jenkins_agent_work |
 | `kong` | kong | 80, 443 (host networking, ufw) | none (DB-less) |
 
@@ -380,8 +380,10 @@ redeploy when they change.
 | `stacks_rustfs_access_key` | `{{ vault_rustfs_access_key }}` | RustFS root access key (every start). |
 | `stacks_rustfs_secret_key` | `{{ vault_rustfs_secret_key }}` | RustFS root secret key (every start). |
 | `stacks_registry_image` | `registry:3.1.2` | Docker registry image, CNCF Distribution (ADR-0020). |
+| `stacks_registry_ui_image` | `joxit/docker-registry-ui:2.6.0` | Registry web UI (browse, delete tags), served at `/registry/`. |
 | `stacks_registry_htpasswd_image` | `httpd:2.4.69-alpine` | Runs only `htpasswd` (bcrypt hash and check of the registry password). |
 | `stacks_registry_port` | `5000` | Host port for the registry API (HTTPS, MagicBox certificate). |
+| `stacks_registry_ui_port` | `5001` | Loopback HTTP port of the registry UI (reached through Kong). |
 | `stacks_registry_user` | `magicbox` | Registry login user (push and pull). |
 | `stacks_registry_password` | `{{ vault_registry_password }}` | Registry password; the htpasswd file is rewritten only when it no longer matches. |
 
@@ -436,15 +438,15 @@ status on `127.0.0.1:8100`, Kong Manager off.
 | `/grafana` | Grafana 3000 (HTTPS, `serve_from_sub_path`) | kept | Grafana login |
 | `/rabbitmq/` | RabbitMQ 15672 (`management.path_prefix`) | kept | RabbitMQ login |
 | `/ollama/` | Ollama 11434 (API, no UI) | stripped | header/query `apikey` = `vault_kong_ollama_api_key` |
+| `/registry/` | Registry UI 5001 (HTTP; proxies `/v2` to the registry) | stripped | registry login (Basic, from the registry) |
 | `/<name>` (each app in `magicbox_apps`) | app `<port>` (HTTP) | stripped | app's own |
 | `/rustfs`, `/rustfs/` | - | 301 to `https://magicbox.local:9101/rustfs/console/` | - |
 | `/openwebui`, `/openwebui/` | - | 301 to `https://magicbox.local:8444/` (ADR-0019) | - |
-| `/registry`, `/registry/` | - | 301 to `https://magicbox.local:5000/v2/_catalog` (ADR-0020) | - |
 
 Verification: every route whose container exists answers 200 through
 `https://magicbox.local/` with the MagicBox CA (Ollama with the key);
-`/ollama/` without the key gets 401; `/portainer` and `/rabbitmq` get a 301
-adding the slash; `/rustfs`, `/openwebui` and `/registry` get a 301 to their own ports; HTTP gets a 301
+`/ollama/` without the key gets 401; `/portainer`, `/rabbitmq` and `/registry` get a 301
+adding the slash; `/rustfs` and `/openwebui` get a 301 to their own ports; HTTP gets a 301
 to HTTPS. Apps
 registry assertions: unique names (lowercase, digits, hyphens, not a built-in
 route) and unique ports outside `stacks_reserved_ports`.
@@ -487,7 +489,8 @@ Registries > `magicbox`, custom, with login), so stack deployments pull its
 images; the password is sent on creation and again whenever the htpasswd
 file is rewritten (the API never returns it).
 Verification: `/v2/` over HTTPS with the MagicBox CA refuses anonymous access
-(401) and accepts the vault credentials; the Docker engine logs in (throwaway
+(401) and accepts the vault credentials, also through the UI's proxy
+(`127.0.0.1:5001/v2/_catalog`); the Docker engine logs in (throwaway
 client config, removed). Free disk space after deleting tags:
 `sudo docker exec registry registry garbage-collect /etc/distribution/config.yml`.
 

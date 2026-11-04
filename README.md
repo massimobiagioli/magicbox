@@ -33,7 +33,7 @@ Apps come from the apps registry `inventory/group_vars/magicbox/apps.yml`
 | Tester App | `https://magicbox.local/tester-app` | - (loopback, port from the apps registry) | none |
 | RustFS console | `https://magicbox.local/rustfs` (redirect) | `https://magicbox.local:9101/rustfs/console/` | `vault_rustfs_access_key` / `vault_rustfs_secret_key` |
 | RustFS S3 API | - (signed paths, ADR-0018) | `https://magicbox.local:9100` (path-style, region `us-east-1`) | same keys as the console |
-| Docker registry | `https://magicbox.local/registry` (redirect) | `https://magicbox.local:5000/v2/` (`docker login magicbox.local:5000`) | `magicbox` / `vault_registry_password` |
+| Docker registry | `https://magicbox.local/registry/` (UI) | `https://magicbox.local:5000/v2/` (`docker login magicbox.local:5000`) | `magicbox` / `vault_registry_password` |
 | RabbitMQ AMQP | - | `amqp://magicbox.local:5672` | as RabbitMQ UI |
 | PostgreSQL | - | `magicbox.local:5432`, database `magicbox` | `magicbox` / `vault_postgresql_password` |
 
