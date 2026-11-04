@@ -62,6 +62,10 @@
   loop_control:
     loop_var: stacks_name
 
+- name: Register the MagicBox registry in Portainer
+  ansible.builtin.include_tasks: portainer_registry.yml
+  when: "'registry' in stacks_enabled"
+
 - name: Verify the deployed stacks
   ansible.builtin.include_tasks:
     file: verify.yml

@@ -12,7 +12,7 @@
       - stacks_kong_ufw.stdout is search('(?m)^' ~ item ~ '/tcp\s+ALLOW')
     fail_msg: >-
       ufw does not allow TCP port {{ item }} from the LAN. Keep it in
-      firewall_lan_tcp_ports and run `make deploy` before `make api-gateway`.
+      firewall_lan_tcp_ports and run `make deploy` without --tags (the firewall role opens it).
     quiet: true
   loop:
     - "{{ stacks_kong_http_port }}"

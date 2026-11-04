@@ -12,37 +12,27 @@ community.general 13.5.0, community.docker 5.4.0, community.crypto 3.5.1.
 
 | Item | Value |
 |------|-------|
-| Playbooks | `playbooks/site.yml` (host + Portainer), `playbooks/stacks.yml` (default stacks), `playbooks/ci-cd.yml` (Jenkins), `playbooks/api-gateway.yml` (Kong), `playbooks/storage.yml` (RustFS), `playbooks/apps.yml` (app routes), `playbooks/update.yml` (OS packages) |
+| Playbooks | `playbooks/site.yml` (`make deploy`: host, Portainer, every stack, apps), `playbooks/status.yml` (read-only status), `playbooks/update.yml` (OS packages) |
 | Inventory | `inventory/hosts.yml` (git-ignored; template `inventory/hosts.example.yml`) |
 | Group | `magicbox` |
 | Project policy | `inventory/group_vars/magicbox/main.yml` |
 | Secrets | `inventory/group_vars/magicbox/vault.yml` (ansible-vault, git-ignored) |
 | Apps registry | `inventory/group_vars/magicbox/apps.yml` (`magicbox_apps`, git-ignored; template `inventory/apps.example.yml`) |
 | Collections | `requirements.yml`, installed to `.ansible/collections` |
-| Result | Portainer CE at `https://magicbox.local:9443/` with environment `homelab`; default stacks; optional gateway at `https://magicbox.local/`; LAN only |
+| Result | Portainer CE at `https://magicbox.local:9443/` with environment `homelab`; every stack; gateway at `https://magicbox.local/`; registry at `magicbox.local:5000`; LAN only |
 
-Play 1, *Configure MagicBox*, runs on group `magicbox` with `become: true` and
-applies the roles in this order: `preflight`, `mdns`, `firewall`, `docker`,
-`portainer`, `portainer_init`. Play 2, *Verify Portainer from the Ansible
-controller*, queries Portainer from the controller over the LAN.
+`playbooks/site.yml` is the whole installation, run by `make deploy` and
+idempotent (ADR-0021). Its plays, in order:
 
-`playbooks/stacks.yml` has one play, *Deploy default stacks through
-Portainer*, that runs the `stacks` role on group `magicbox`. Run it after
-`site.yml`.
-
-`playbooks/ci-cd.yml` has one play, *Deploy the CI/CD stack (Jenkins) through
-Portainer*, that runs the `stacks` role with `stacks_enabled: [jenkins]`.
-
-`playbooks/api-gateway.yml` has one play, *Deploy the API gateway stack (Kong)
-through Portainer*, that runs the `stacks` role with `stacks_enabled: [kong]`.
-
-`playbooks/storage.yml` has one play, *Deploy the object storage stack
-(RustFS) through Portainer*, that runs the `stacks` role with
-`stacks_enabled: [rustfs]`.
-
-`playbooks/apps.yml` has one play, *Register the apps in the API gateway
-(Kong) and in Jenkins*: the same Kong deployment, then the app jobs
-(`tasks/apps_jenkins.yml`) and a report (`tasks/apps_report.yml`).
+1. *Configure MagicBox* (`become: true`): roles `preflight`, `mdns`,
+   `firewall`, `docker`, `portainer`, `portainer_init`.
+2. *Verify Portainer from the Ansible controller*: queries Portainer over the
+   LAN.
+3. *Deploy the stacks through Portainer*: role `stacks` with every stack in
+   `stacks_enabled` (default stacks, RustFS, registry, Jenkins, Kong with the
+   app routes).
+4. *Register the apps in Jenkins*: `tasks/apps.yml`, i.e. `tasks/apps_jenkins.yml`
+   (when `jenkins` is enabled) and the report `tasks/apps_report.yml`.
 
 `playbooks/update.yml` has one play, *Update MagicBox packages*, that runs the
 `os_update` role. It needs the vault password only for `vault_become_password`.
@@ -53,27 +43,22 @@ through Portainer*, that runs the `stacks` role with `stacks_enabled: [kong]`.
 |------|---------|
 | Create the environment | `make setup` |
 | All local checks | `make check` |
-| Container converge + idempotency test | `make test-container` |
+| Container converge + idempotency test | `make test-container` (host), `ARGS="--stacks all"` (everything) |
 | First deployment | `make deploy EXTRA="-e magicbox_confirm_destructive=true"` |
-| Routine deployment | `make deploy` |
-| Only one area | `uv run ansible-playbook playbooks/site.yml --ask-vault-pass --tags docker` |
+| Routine deployment (also after a new app, vault change or certificate renewal) | `make deploy` |
+| Only one area | `make deploy EXTRA="--tags docker"` |
+| Only the stacks and apps | `make deploy EXTRA="--tags stacks,apps"` |
+| Selected stacks only | `uv run ansible-playbook playbooks/site.yml --ask-vault-pass --tags stacks -e '{"stacks_enabled": ["postgresql"]}'` |
 | Dry run with diff | `uv run ansible-playbook playbooks/site.yml --ask-vault-pass --check --diff` |
-| Verification only | `make verify` |
-| Default stacks | `make stacks` |
-| Selected stacks only | `uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass -e '{"stacks_enabled": ["postgresql"]}'` |
-| Stacks: verification only | `uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass --tags verify` |
-| CI/CD stack (Jenkins) | `make ci-cd` |
-| API gateway stack (Kong) | `make api-gateway` |
-| Object storage stack (RustFS) | `make storage` |
-| Register apps in the gateway | `make apps` |
+| Verification only (host, Portainer, stacks) | `make deploy EXTRA="--tags verify"` |
 | Stack status (read-only) | `make status` |
 | Edit the vault | `make vault-edit` |
 | OS package update | `make update` |
 | OS update + reboot if required | `make update EXTRA="-e os_update_reboot=true"` |
-| Idempotency on MagicBox | `make idempotency VAULT_PASSWORD_FILE=<file>` |
+| Idempotency on MagicBox | `uv run tools/idempotency_check.py playbooks/site.yml --vault-password-file <file>` |
 | List tasks / tags | `uv run ansible-playbook playbooks/site.yml --list-tasks` / `--list-tags` |
 
-`make deploy`, `verify`, `stacks` and `update` ask for the vault password;
+`make deploy`, `verify`, `status` and `update` ask for the vault password;
 the sudo password is `vault_become_password` (`ansible_become_password` in
 `inventory/hosts.yml`). `BECOME=-K` prompts for it instead.
 
@@ -91,15 +76,12 @@ fresh host because the packages they verify are not installed yet.
 | `docker` | The `docker` role |
 | `portainer` | The `portainer` and `portainer_init` roles, including TLS tasks |
 | `portainer-init` | Only the `portainer_init` role (site environment) |
-| `stacks` | The `stacks` role (in `playbooks/stacks.yml`) |
-| `ci-cd` | The `stacks` role in `playbooks/ci-cd.yml` (Jenkins stack) |
-| `api-gateway` | The `stacks` role in `playbooks/api-gateway.yml` (Kong stack) |
-| `storage` | The `stacks` role in `playbooks/storage.yml` (RustFS stack) |
-| `apps` | The `stacks` role and the apps report in `playbooks/apps.yml` |
+| `stacks` | The `stacks` role (every stack in `stacks_enabled`, Kong app routes included) |
+| `apps` | The apps play: `apps.json`, Jenkins app jobs, report (needs the `jenkins` and `kong` stacks deployed) |
 | `status` | The read-only status report (in `playbooks/status.yml`) |
 | `update` | The `os_update` role (in `playbooks/update.yml`) |
 | `tls` | Only TLS provisioning inside `portainer` (certificate renewal, CA fetch) |
-| `verify` | Verification tasks in all roles plus the controller play; in `stacks.yml`, login, lookups and stack checks |
+| `verify` | Verification tasks in all roles plus the controller play, stack checks included |
 | `controller-verify` | Only the controller play; skipped by the container test |
 
 `--tags verify` runs `preflight` (tagged `always`) and every `verify` task. It
@@ -133,6 +115,7 @@ Defined in `inventory/hosts.yml` (environment facts) or
 | `magicbox_apps` | `[]` (`inventory/group_vars/magicbox/apps.yml`) | Apps (ADR-0016, ADR-0017): `name` (Jenkins job, Portainer stack, container, URL path `/<name>`), `port` (host port on `127.0.0.1`, 18000-18999), `repo` (`https://github.com/<owner>/<repository>`). Maintained by `tools/new_app.py`. |
 | `vault_rustfs_access_key`, `vault_rustfs_secret_key` | required for the RustFS stack (vault) | At least 12 characters each; RustFS root credentials (console login, S3 keys), applied at every start. |
 | `vault_kong_ollama_api_key` | required for the Kong stack (vault) | At least 12 characters; API key for `https://magicbox.local/ollama/` (header or query parameter `apikey`). |
+| `vault_registry_password` | required for the registry stack (vault) | At least 12 characters; registry login of `stacks_registry_user` and Jenkins credential `registry`. |
 
 ## 5. Role `preflight`
 
@@ -320,14 +303,14 @@ environment, or creates one (ADR-0010). `tasks/api_login.yml` is reused by
 in the vault. Changing `magicbox_site_name` after stacks exist creates a new,
 empty environment; rename the old one in the UI first.
 
-## 11. Role `stacks` (playbooks/stacks.yml)
+## 11. Role `stacks`
 
 **Purpose.** Deploy the default services as Portainer standalone stacks in the
 site environment (ADR-0011). For each name in `stacks_enabled` it renders
 `roles/stacks/templates/<name>.yml.j2`, passes the secrets as stack
 environment variables, and creates the stack, or updates it when the compose
 file or environment differs or one of its containers is missing (e.g. an
-interrupted first deployment). Config files for `rabbitmq`, `ollama` (Open WebUI TLS), `observability`, `jenkins`, `kong` and `rustfs` are written to
+interrupted first deployment). Config files for `rabbitmq`, `ollama` (Open WebUI TLS), `observability`, `jenkins`, `kong`, `rustfs` and `registry` are written to
 `stacks_base_dir`; their checksum (`MAGICBOX_CONFIG_REVISION` label) forces a
 redeploy when they change.
 
@@ -337,13 +320,14 @@ redeploy when they change.
 | `postgresql` | postgresql | 5432 | postgresql_data |
 | `ollama` | ollama, open-webui | 11434 (API), 8444 (Open WebUI, HTTPS) | ollama_data, open_webui_data |
 | `observability` | grafana, loki, alloy | 3000 (Grafana HTTPS, under `/grafana/`) | grafana_data, loki_data, alloy_data |
-| `jenkins` (only via `playbooks/ci-cd.yml`) | jenkins, jenkins-agent | 8443 (Jenkins HTTPS, under `/jenkins/`) | jenkins_home, jenkins_agent_work |
-| `kong` (only via `playbooks/api-gateway.yml`) | kong | 80, 443 (host networking, ufw) | none (DB-less) |
-| `rustfs` (only via `playbooks/storage.yml`) | rustfs | 9100 (S3 API), 9101 (console under `/rustfs/console/`), both HTTPS | rustfs_data |
+| `rustfs` | rustfs | 9100 (S3 API), 9101 (console under `/rustfs/console/`), both HTTPS | rustfs_data |
+| `registry` | registry | 5000 (registry API, HTTPS) | registry_data |
+| `jenkins` | jenkins, jenkins-agent | 8443 (Jenkins HTTPS, under `/jenkins/`) | jenkins_home, jenkins_agent_work |
+| `kong` | kong | 80, 443 (host networking, ufw) | none (DB-less) |
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `stacks_enabled` | rabbitmq, postgresql, ollama, observability | Stacks to manage. Removing one does not delete it. |
+| `stacks_enabled` | rabbitmq, postgresql, ollama, observability, rustfs, registry, jenkins, kong | Stacks to manage, in this order. Removing one does not delete it. |
 | `stacks_base_dir` | `/opt/magicbox/stacks` | Host directory for mounted config files. |
 | `stacks_rabbitmq_image` | `rabbitmq:4.3.7-management` | RabbitMQ image. |
 | `stacks_postgresql_image` | `postgres:18.6` | PostgreSQL image (newest major, supported to 2030). |
@@ -395,6 +379,11 @@ redeploy when they change.
 | `stacks_rustfs_console_port` | `9101` | Host port for the console (HTTPS, `/rustfs/console/`; also answers S3/admin calls). |
 | `stacks_rustfs_access_key` | `{{ vault_rustfs_access_key }}` | RustFS root access key (every start). |
 | `stacks_rustfs_secret_key` | `{{ vault_rustfs_secret_key }}` | RustFS root secret key (every start). |
+| `stacks_registry_image` | `registry:3.1.2` | Docker registry image, CNCF Distribution (ADR-0020). |
+| `stacks_registry_htpasswd_image` | `httpd:2.4.69-alpine` | Runs only `htpasswd` (bcrypt hash and check of the registry password). |
+| `stacks_registry_port` | `5000` | Host port for the registry API (HTTPS, MagicBox certificate). |
+| `stacks_registry_user` | `magicbox` | Registry login user (push and pull). |
+| `stacks_registry_password` | `{{ vault_registry_password }}` | Registry password; the htpasswd file is rewritten only when it no longer matches. |
 
 Internal data (`roles/stacks/vars/main.yml`, not meant to be overridden):
 `stacks_env` (environment per stack), `stacks_required_secrets`,
@@ -402,10 +391,12 @@ Internal data (`roles/stacks/vars/main.yml`, not meant to be overridden):
 (`stacks_jenkins_build_tag`, a hash of the build files), the image names, the
 Jenkins UID and the PKCS#12 keystore password, and the gateway routes
 (`stacks_kong_routes`, `stacks_kong_app_routes` built from `magicbox_apps`,
-`stacks_kong_all_routes`, `stacks_kong_port_redirects`, `stacks_reserved_ports`).
+`stacks_kong_all_routes`, `stacks_kong_port_redirects`, `stacks_reserved_ports`),
+and for the registry `stacks_registry_address` (`magicbox.local:5000`) and
+`stacks_registry_portainer_name` (`magicbox`).
 
-**Prerequisites.** `playbooks/site.yml` completed (Portainer, `homelab`
-environment, DOCKER-USER filter); the vault contains the stack passwords.
+**Prerequisites.** The host roles of the same run (Portainer, `homelab`
+environment, DOCKER-USER filter); the vault contains every stack password.
 
 **Verification.** All stack containers running, and healthy where a
 healthcheck exists (up to 15 minutes, to cover first image pulls).
@@ -416,7 +407,7 @@ over HTTPS with the MagicBox CA.
 Loki has a `container` label value `loki`, which proves Alloy -> Loki ->
 Grafana works.
 
-**Jenkins (`make ci-cd`, ADR-0014).** Ansible builds `magicbox/jenkins` and
+**Jenkins (ADR-0014).** Ansible builds `magicbox/jenkins` and
 `magicbox/jenkins-agent` on MagicBox (tag = hash of the build files), writes
 `/opt/magicbox/stacks/jenkins/` (`casc/jenkins.yaml`, `secrets/` mode 0400
 for UID 1000, `tls/jenkins.p12`), generates the controller -> agent SSH key and
@@ -425,13 +416,14 @@ pinned in JCasC, so a recreated agent is still trusted. Jenkins is configured on
 sign-up, no anonymous access, 0 executors on the controller, node
 `docker-agent` (label `docker`) over SSH. Verification: admin login over HTTPS
 with the MagicBox CA, anonymous access refused, agent online, `docker version`
-works on the agent as user `jenkins`. Settings managed by JCasC and changed in
+works on the agent as user `jenkins`. Credentials `github`, `portainer-api-token`
+and `registry` exist when their vault value is set. Settings managed by JCasC and changed in
 the UI are overwritten at the next start; jobs are created in the UI.
 
-**API gateway (`make api-gateway`, ADR-0015).** Kong OSS in DB-less mode,
+**API gateway (ADR-0015).** Kong OSS in DB-less mode,
 host networking, ports 80 (301 to HTTPS) and 443 with a copy of the MagicBox
-certificate. Ansible asserts that ufw allows both ports (run `make deploy`
-first), writes `/opt/magicbox/stacks/kong/declarative/kong.yaml` (root 0400,
+certificate. Ansible asserts that ufw allows both ports (firewall role of the
+same run), writes `/opt/magicbox/stacks/kong/declarative/kong.yaml` (root 0400,
 contains the API key) and `tls/`. Admin API (read-only) on `127.0.0.1:8001`,
 status on `127.0.0.1:8100`, Kong Manager off.
 
@@ -447,18 +439,19 @@ status on `127.0.0.1:8100`, Kong Manager off.
 | `/<name>` (each app in `magicbox_apps`) | app `<port>` (HTTP) | stripped | app's own |
 | `/rustfs`, `/rustfs/` | - | 301 to `https://magicbox.local:9101/rustfs/console/` | - |
 | `/openwebui`, `/openwebui/` | - | 301 to `https://magicbox.local:8444/` (ADR-0019) | - |
+| `/registry`, `/registry/` | - | 301 to `https://magicbox.local:5000/v2/_catalog` (ADR-0020) | - |
 
 Verification: every route whose container exists answers 200 through
 `https://magicbox.local/` with the MagicBox CA (Ollama with the key);
 `/ollama/` without the key gets 401; `/portainer` and `/rabbitmq` get a 301
-adding the slash; `/rustfs` and `/openwebui` get a 301 to their own ports; HTTP gets a 301
+adding the slash; `/rustfs`, `/openwebui` and `/registry` get a 301 to their own ports; HTTP gets a 301
 to HTTPS. Apps
 registry assertions: unique names (lowercase, digits, hyphens, not a built-in
 route) and unique ports outside `stacks_reserved_ports`.
 
-**Apps (`make apps`, ADR-0016, ADR-0017).** In order: registry assertions and
+**Apps (play 4, tag `apps`, ADR-0016, ADR-0017).** In order: registry assertions and
 Kong routes (above); Jenkins must run with `CASC_JENKINS_CONFIG=/etc/jenkins/casc`
-(else "run `make ci-cd` first"); `/opt/magicbox/apps/apps.json`;
+(else "run `make deploy` first"); `/opt/magicbox/apps/apps.json`;
 `casc/apps.yaml` with one Job DSL `multibranchPipelineJob` per app (GitHub
 source, credential `github`, all branches, no pull requests, scan every
 `stacks_jenkins_scan_interval`); JCasC reload (crumb + admin login, no
@@ -466,11 +459,12 @@ restart) when the file changed or a job is missing; every job exists; first
 scan of new jobs; report `deployed` / `registered, not deployed yet`.
 Each app's `Jenkinsfile` (template) takes the app name from the job name,
 reads its port from `apps.json`, and deploys the Portainer stack `<name>`
-(image `magicbox/<name>:<commit>`, `127.0.0.1:<port>`). Removing an app from
+(image `magicbox.local:5000/<name>:<commit>`, pushed to the registry with the
+Jenkins credential `registry` and pulled by Portainer, `127.0.0.1:<port>`). Removing an app from
 the registry removes its route and port, not its job or stack; job changes
 in the UI are overwritten.
 
-**Object storage (`make storage`, ADR-0018).** RustFS, one data volume
+**Object storage (ADR-0018).** RustFS, one data volume
 (single drive, no parity), root credentials from the vault. Ansible copies the
 MagicBox certificate to `/opt/magicbox/stacks/rustfs/tls/`
 (`rustfs_cert.pem`, `rustfs_key.pem`, UID 10001, 0400), so both ports serve
@@ -479,6 +473,23 @@ is opened on its own port; the gateway path only redirects. S3 clients use
 `https://magicbox.local:9100`, path-style, region `us-east-1`. Verification:
 `/health` (9100) and `/rustfs/console/health` (9101) over HTTPS with the
 MagicBox CA; anonymous S3 request refused (403).
+
+**Docker registry (ADR-0020).** CNCF Distribution, one data volume. Ansible
+copies the MagicBox certificate to `/opt/magicbox/stacks/registry/tls/` and
+keeps `auth/htpasswd` (bcrypt, root 0400) in sync with
+`vault_registry_password`: `htpasswd -vi` in `stacks_registry_htpasswd_image`
+checks it, `htpasswd -niB` rewrites it only on mismatch (password via stdin).
+The MagicBox engine trusts the CA through
+`/etc/docker/certs.d/magicbox.local:5000/ca.crt`, so the Jenkins agent pushes
+without insecure settings. Image names: `magicbox.local:5000/<name>:<tag>`.
+The registry is also added to Portainer (`tasks/portainer_registry.yml`,
+Registries > `magicbox`, custom, with login), so stack deployments pull its
+images; the password is sent on creation and again whenever the htpasswd
+file is rewritten (the API never returns it).
+Verification: `/v2/` over HTTPS with the MagicBox CA refuses anonymous access
+(401) and accepts the vault credentials; the Docker engine logs in (throwaway
+client config, removed). Free disk space after deleting tags:
+`sudo docker exec registry registry garbage-collect /etc/distribution/config.yml`.
 
 **Status.** `make status` (`playbooks/status.yml`, `tasks/status.yml`) changes
 nothing: it lists each image of the enabled stacks as OK or MISSING and each
@@ -496,10 +507,11 @@ when anything is not OK.
   run.
 - RabbitMQ, PostgreSQL and Ollama use plain-text protocols on the LAN; Ollama
   has no authentication. Access is limited to the LAN by DOCKER-USER.
-- Grafana and Open WebUI use a copy of the Portainer certificate. After a
-  certificate renewal by `site.yml`, run `stacks.yml` to refresh the copies.
-- First deployment downloads about 5 GB (Ollama about 3.4 GB, Open WebUI
-  slim about 0.9 GB).
+- Grafana, Open WebUI, Jenkins, Kong, RustFS and the registry use a copy of
+  the Portainer certificate; `make deploy` renews it and refreshes the copies
+  in the same run.
+- First deployment downloads about 6 GB (Ollama about 3.4 GB, Open WebUI
+  slim about 0.9 GB) and builds the Jenkins images.
 - Open WebUI is reached on port 8444 (no sub-path support); `/openwebui` on
   the gateway only redirects. Slim image: document upload / RAG needs an
   embedding engine and a vector store, not configured.
@@ -510,12 +522,13 @@ when anything is not OK.
 - Jenkins, Grafana and the RabbitMQ UI are served under `/jenkins/`,
   `/grafana/`, `/rabbitmq/` on their own ports too (old root URLs give 404).
 - Kong: the direct ports stay open; Ollama on 11434 has no key. Kong's
-  nginx master runs as root (binds 80/443). After a certificate renewal run
-  `make api-gateway` to refresh Kong's copy. Upstream certificates are not
+  nginx master runs as root (binds 80/443). Upstream certificates are not
   verified (loopback only).
-- RustFS: after a certificate renewal run `make storage` to refresh its copy.
-  Single drive, no redundancy: back up `rustfs_data`. Removing the stack
+- RustFS: single drive, no redundancy: back up `rustfs_data`. Removing the stack
   keeps the volume; deleting `rustfs_data` deletes every bucket.
+- Registry: anyone with `vault_registry_password` can push images that a
+  pipeline may deploy. LAN clients must trust the MagicBox CA for
+  `magicbox.local:5000`. Deleting `registry_data` deletes every image.
 
 ## 12. Role `os_update` (playbooks/update.yml)
 
@@ -546,17 +559,11 @@ after the update (and after the reboot, if any). Before the first
 
 | Check | Command | Proves |
 |-------|---------|--------|
-| Syntax | `make syntax` | Playbook parses with the example inventory |
-| Lint | `make lint` | yamllint + ansible-lint `production` profile |
-| Secrets | `make secrets-check` | No plaintext vault values or private keys tracked |
-| Docs | `make docs-check` | Links, ADR registry, this reference covers all roles/variables/tags |
-| Container | `make test-container` | Full converge and `changed=0` second run in an Ubuntu 24.04 systemd container (arm64 or amd64 per workstation) |
-| Container + stacks | `make test-container ARGS="--with-stacks"` | Also runs `stacks.yml` twice (deploy + `changed=0`) |
-| Container + storage | `make test-container ARGS="--with-storage"` | Also runs `storage.yml` twice (RustFS over HTTPS, `changed=0`) |
-| Container + CI/CD | `make test-container ARGS="--with-ci-cd"` | Also runs `ci-cd.yml` twice (Jenkins images, login, agent online, `changed=0`) |
-| Container + gateway | `make test-container ARGS="--with-api-gateway"` | Also runs `api-gateway.yml` twice (Kong, Portainer route, key-auth, redirect, `changed=0`) |
-| Container + apps | `make test-container ARGS="--with-api-gateway --with-apps"` | Also runs `apps.yml` twice (registry checks, app routes, `changed=0`) |
-| Host | `make deploy`, `make idempotency`, `make verify` | Real behaviour on MagicBox |
+| Local checks | `make check` | Playbooks parse with the example inventory; yamllint + ansible-lint `production` profile; no plaintext vault values or private keys tracked; manuals rebuilt; links, ADR registry, this reference covers all roles/variables/tags |
+| Container | `make test-container` | Host and Portainer converge and `changed=0` second run of `site.yml` in an Ubuntu 24.04 systemd container (arm64 or amd64 per workstation); tags `stacks`, `apps` skipped |
+| Container, everything | `make test-container ARGS="--stacks all"` | The whole `make deploy` twice: every stack, app jobs, `changed=0` |
+| Container, some stacks | `make test-container ARGS="--stacks registry,jenkins,kong"` | `site.yml` twice with `stacks_enabled` limited to the list |
+| Host | `make deploy` (twice: `changed=0`), `idempotency_check.py`, `--tags verify` | Real behaviour on MagicBox |
 
 The container test overrides `magicbox_expected_architecture`,
 `magicbox_lan_interface`, `magicbox_lan_cidr` and sets
@@ -569,5 +576,5 @@ from other machines.
    `defaults/main.yml`.
 2. Update this reference (roles, variables, tags, risks) and, for significant
    decisions, add an ADR and list it in the registry and `CLAUDE.md`.
-3. `make manuals check test-container`.
+3. `make manuals check test-container` (with `ARGS="--stacks ..."` for stack changes).
 4. Commit sources and rebuilt PDFs together.

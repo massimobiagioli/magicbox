@@ -1,0 +1,43 @@
+# {{ ansible_managed }}
+# Docker registry (CNCF Distribution, ADR-0020): HTTPS with a copy of the
+# MagicBox certificate, htpasswd login for push and pull. Images are
+# addressed as {{ magicbox_hostname }}.local:{{ stacks_registry_port }}/<name>:<tag>.
+x-config-revision: &config-revision
+  com.magicbox.config-revision: ${MAGICBOX_CONFIG_REVISION}
+
+services:
+  registry:
+    image: {{ stacks_registry_image }}
+    container_name: registry
+    restart: unless-stopped
+    labels: *config-revision
+    environment:
+      REGISTRY_HTTP_ADDR: 0.0.0.0:5000
+      REGISTRY_HTTP_TLS_CERTIFICATE: /etc/registry/tls/registry.crt
+      REGISTRY_HTTP_TLS_KEY: /etc/registry/tls/registry.key
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: MagicBox registry
+      REGISTRY_AUTH_HTPASSWD_PATH: /etc/registry/auth/htpasswd
+      # Tags and manifests can be deleted through the API; blobs are freed
+      # by `registry garbage-collect` (see the playbook reference).
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    ports:
+      - "{{ stacks_registry_port }}:5000"
+    volumes:
+      - registry_data:/var/lib/registry
+      - {{ stacks_base_dir }}/registry/tls:/etc/registry/tls:ro
+      - {{ stacks_base_dir }}/registry/auth:/etc/registry/auth:ro
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # "/" answers 200 without login. Loopback: the certificate names
+      # magicbox.local, hence --no-check-certificate.
+      test: ["CMD", "wget", "-q", "--no-check-certificate", "-O", "/dev/null", "https://127.0.0.1:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  registry_data:
+    name: registry_data

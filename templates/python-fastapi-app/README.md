@@ -13,13 +13,13 @@ docker compose up --build -d                   # container on port 8000 (HEALTHC
 
 ## CI/CD on MagicBox
 
-The Jenkins job is created by `make apps`; its name is the app name. A push
+The Jenkins job is created by `make deploy`; its name is the app name. A push
 is picked up within 5 minutes.
 
 | Branch | Stages |
 |--------|--------|
 | any | Prepare (`ci` image), Lint (ruff), Test (pytest) |
-| `main` | + Build (`magicbox/<app>:<commit>`), Deploy (Portainer stack `<app>`), Verify (healthy) |
+| `main` | + Build (`magicbox.local:5000/<app>:<commit>`), Push (MagicBox registry, credential `registry`), Deploy (Portainer stack `<app>`, image pulled from the registry), Verify (healthy) |
 
 `deploy/stack.yml` publishes `127.0.0.1:${APP_PORT}` (port from the MagicBox
 apps registry) to container port 8000; Kong serves it at

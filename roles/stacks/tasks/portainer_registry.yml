@@ -1,0 +1,59 @@
+---
+# Registers the MagicBox registry in Portainer (ADR-0020), so that stack
+# deployments (the app pipelines) pull its images with the registry login.
+# The API never returns the password: it is sent on creation and whenever
+# config_registry.yml rewrote the htpasswd file (the vault password changed).
+- name: List the registries known to Portainer
+  ansible.builtin.uri:
+    url: "{{ magicbox_portainer_api_url }}/api/registries"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers:
+      Authorization: "Bearer {{ portainer_init_jwt }}"
+  register: stacks_portainer_registries
+
+- name: Find the MagicBox registry in Portainer
+  ansible.builtin.set_fact:
+    stacks_portainer_registry: "{{ stacks_portainer_registries.json | selectattr('URL', '==', stacks_registry_address) | list }}"
+
+- name: Add the MagicBox registry to Portainer
+  ansible.builtin.uri:
+    url: "{{ magicbox_portainer_api_url }}/api/registries"
+    method: POST
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers:
+      Authorization: "Bearer {{ portainer_init_jwt }}"
+    body_format: json
+    body:
+      name: "{{ stacks_registry_portainer_name }}"
+      # 3 = custom registry.
+      type: 3
+      url: "{{ stacks_registry_address }}"
+      authentication: true
+      username: "{{ stacks_registry_user }}"
+      password: "{{ stacks_registry_password }}"
+  when: stacks_portainer_registry | length == 0
+  changed_when: true
+  no_log: true
+
+- name: Update the MagicBox registry in Portainer (settings or password changed)
+  ansible.builtin.uri:
+    url: "{{ magicbox_portainer_api_url }}/api/registries/{{ stacks_portainer_registry[0].Id }}"
+    method: PUT
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    headers:
+      Authorization: "Bearer {{ portainer_init_jwt }}"
+    body_format: json
+    body:
+      name: "{{ stacks_registry_portainer_name }}"
+      url: "{{ stacks_registry_address }}"
+      authentication: true
+      username: "{{ stacks_registry_user }}"
+      password: "{{ stacks_registry_password }}"
+  when:
+    - stacks_portainer_registry | length > 0
+    - (stacks_registry_htpasswd_new is not skipped)
+      or stacks_portainer_registry[0].Name != stacks_registry_portainer_name
+      or not stacks_portainer_registry[0].Authentication
+      or stacks_portainer_registry[0].Username != stacks_registry_user
+  changed_when: true
+  no_log: true

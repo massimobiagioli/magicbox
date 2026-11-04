@@ -123,6 +123,49 @@
     status_code: 403
   when: "'rustfs' in stacks_enabled"
 
+- name: Check the registry API refuses anonymous access over HTTPS with the MagicBox CA
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_registry_port }}/v2/"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    status_code: 401
+  register: stacks_registry_anonymous
+  retries: 20
+  delay: 3
+  until: stacks_registry_anonymous.status == 401
+  when: "'registry' in stacks_enabled"
+
+- name: Check the registry API accepts the vault credentials
+  ansible.builtin.uri:
+    url: "https://{{ magicbox_hostname }}.local:{{ stacks_registry_port }}/v2/"
+    ca_path: "{{ magicbox_portainer_ca_cert }}"
+    url_username: "{{ stacks_registry_user }}"
+    url_password: "{{ stacks_registry_password }}"
+    force_basic_auth: true
+  when: "'registry' in stacks_enabled"
+  no_log: true
+
+# The engine itself logs in: proves it resolves magicbox.local and trusts the
+# CA, as pushes from the Jenkins agent need. The throwaway client config is
+# removed, so no credentials stay on the host.
+- name: Check the MagicBox Docker engine can log in to the registry
+  when: "'registry' in stacks_enabled"
+  block:
+    - name: Log in to the registry through the Docker engine
+      community.docker.docker_login:
+        registry_url: "{{ stacks_registry_address }}"
+        username: "{{ stacks_registry_user }}"
+        password: "{{ stacks_registry_password }}"
+        config_path: "{{ stacks_base_dir }}/registry/verify-login.json"
+        reauthorize: true
+      changed_when: false
+      no_log: true
+  always:
+    - name: Remove the throwaway registry login
+      ansible.builtin.file:
+        path: "{{ stacks_base_dir }}/registry/verify-login.json"
+        state: absent
+      changed_when: false
+
 - name: Check that Loki receives container logs shipped by Alloy (via Grafana)
   ansible.builtin.uri:
     url: >-

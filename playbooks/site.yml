@@ -1,6 +1,8 @@
 ---
-# MagicBox: Docker + Portainer reachable at https://magicbox.local:9443/ from the LAN.
-# Run: uv run ansible-playbook playbooks/site.yml --ask-vault-pass
+# MagicBox, the whole infrastructure in one idempotent run (ADR-0021): host,
+# Docker, Portainer (https://magicbox.local:9443/), every stack in
+# stacks_enabled, the apps registry (Kong routes, Jenkins jobs).
+# Run: make deploy
 - name: Configure MagicBox
   hosts: magicbox
   become: true
@@ -39,3 +41,30 @@
       retries: 5
       delay: 3
       until: controller_portainer_status.status == 200
+
+# Default stacks, Jenkins, Kong (with the app routes), RustFS, registry
+# (ADR-0011, 0014, 0015, 0018, 0020), as Portainer stacks in the site
+# environment (magicbox_site_name).
+- name: Deploy the stacks through Portainer
+  hosts: magicbox
+  become: true
+  gather_facts: false
+  roles:
+    - role: stacks
+      tags: [stacks]
+
+# Apps registry (magicbox_apps in the git-ignored
+# inventory/group_vars/magicbox/apps.yml; template inventory/apps.example.yml):
+# Kong routes are deployed with the kong stack above; here apps.json and one
+# Jenkins Multibranch Pipeline per app, whose pipeline deploys the app
+# (ADR-0016, ADR-0017).
+- name: Register the apps in Jenkins
+  hosts: magicbox
+  become: true
+  gather_facts: false
+  tags: [apps]
+  tasks:
+    - name: Create the Jenkins jobs of the apps and report them
+      ansible.builtin.include_role:
+        name: stacks
+        tasks_from: apps

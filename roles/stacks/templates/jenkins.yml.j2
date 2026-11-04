@@ -18,7 +18,7 @@ services:
         --httpPort=-1 --httpsPort=8443 --prefix=/jenkins
         --httpsKeyStore=/etc/jenkins/tls/jenkins.p12
         --httpsKeyStorePassword={{ stacks_jenkins_keystore_password }}
-      # Directory: jenkins.yaml (make ci-cd) + apps.yaml (app jobs, make apps).
+      # Directory: jenkins.yaml (Jenkins settings) + apps.yaml (app jobs).
       CASC_JENKINS_CONFIG: /etc/jenkins/casc
     ports:
       - "{{ stacks_jenkins_port }}:8443"

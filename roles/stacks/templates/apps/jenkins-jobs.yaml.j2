@@ -1,14 +1,14 @@
 # {{ ansible_managed }}
 # Jenkins Configuration as Code: one Multibranch Pipeline per app of the apps
 # registry (magicbox_apps), created by Job DSL (ADR-0017). Applied at every
-# Jenkins start and by `make apps` (JCasC reload). Jobs removed from the
+# Jenkins start and by `make deploy` (JCasC reload). Jobs removed from the
 # registry are not deleted: delete them in the UI.
 jobs:
 {% for app in magicbox_apps | default([]) %}
 {% set owner, repository = (app.repo | urlsplit('path')).strip('/').split('/') %}
   - script: |
       multibranchPipelineJob('{{ app.name }}') {
-        description('MagicBox app {{ app.name }} ({{ app.repo }}). Managed by Ansible (make apps): changes in the UI are overwritten.')
+        description('MagicBox app {{ app.name }} ({{ app.repo }}). Managed by Ansible (make deploy): changes in the UI are overwritten.')
         branchSources {
           branchSource {
             source {

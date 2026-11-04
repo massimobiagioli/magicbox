@@ -126,71 +126,52 @@ controller$ make vault-edit          # creates the encrypted vault on first use
       `ansible_ssh_private_key_file: ~/.ssh/magicbox/id_ed25519`.
 - [ ] Ubuntu 26.04: uncomment `ansible_become_exe: sudo.ws`.
 - [ ] In `vault.yml` (see `inventory/vault.example.yml`):
-      `vault_become_password` (sudo password of `ansible_user`) and five
-      different passwords of 12+ characters: `vault_portainer_admin_password`,
+      `vault_become_password` (sudo password of `ansible_user`) and these
+      different values of 12+ characters: `vault_portainer_admin_password`,
       `vault_postgresql_password`, `vault_rabbitmq_password`,
-      `vault_grafana_admin_password`, `vault_openwebui_admin_password`; plus
-      `vault_openwebui_secret_key` (`openssl rand -hex 32`). Keep the vault
-      password in your password manager.
+      `vault_grafana_admin_password`, `vault_openwebui_admin_password`,
+      `vault_jenkins_admin_password`, `vault_registry_password`;
+      `vault_openwebui_secret_key` (`openssl rand -hex 32`),
+      `vault_kong_ollama_api_key` (`openssl rand -hex 24`),
+      `vault_rustfs_access_key` (`openssl rand -hex 12`),
+      `vault_rustfs_secret_key` (`openssl rand -hex 24`). Leave
+      `vault_jenkins_github_token` and `vault_jenkins_portainer_token` empty
+      for now (4.1). Keep the vault password in your password manager.
 
 ```text
-controller$ make secrets-check
+controller$ make check
 controller$ uv run ansible magicbox -m ansible.builtin.ping    # expect "pong"
 ```
 
 ## 4. Deployment
 
+One idempotent command installs everything: host, Docker, Portainer, every
+stack (RabbitMQ, PostgreSQL, Ollama + Open WebUI, Grafana/Loki/Alloy, RustFS,
+registry, Jenkins, Kong) and the apps registry.
+
 ```text
 controller$ make deploy EXTRA="-e magicbox_confirm_destructive=true"   # first run
-controller$ make deploy                                                # later runs
+controller$ make deploy                                                # every later run
 ```
 
 `make` asks only for the vault password; the sudo password comes from
 `vault_become_password`. The first run needs the confirmation flag
-because it enables the firewall. The CA certificate is saved to
-`artifacts/magicbox-local-ca.crt`. Portainer is initialised with the
-`homelab` environment.
+because it enables the firewall. It pulls about 6 GB of images and builds the
+Jenkins images (allow 30+ minutes). The CA certificate is saved to
+`artifacts/magicbox-local-ca.crt`.
 
-Then pull the stack images on MagicBox (about 5 GB; shows progress and
-resumes after an interruption). Versions match `roles/stacks/defaults/main.yml`:
-
-```text
-magicbox$ sudo docker pull rabbitmq:4.3.7-management
-magicbox$ sudo docker pull postgres:18.6
-magicbox$ sudo docker pull ollama/ollama:0.40.12
-magicbox$ sudo docker pull ghcr.io/open-webui/open-webui:v0.12.5-slim
-magicbox$ sudo docker pull grafana/grafana:13.2.5
-magicbox$ sudo docker pull grafana/loki:3.7.9
-magicbox$ sudo docker pull grafana/alloy:v1.21.2
-```
-
-- [ ] Each pull ends with `Status: Downloaded newer image` or `Image is up to date`.
-
-Deploy the default stacks:
-
-```text
-controller$ make stacks
-```
-
+- [ ] The run ends with `failed=0`.
+- [ ] A second `make deploy` reports `changed=0`.
 - [ ] Open WebUI: `https://magicbox.local:8444/` opens; log in as
       `admin@magicbox.local` / `vault_openwebui_admin_password`; with a model
       pulled (`stacks_ollama_models`), a chat answers.
+- [ ] If it stops waiting for containers (slow pulls): `make status`, then
+      `make deploy` again (it resumes).
 
-Deploy only some stacks:
+Run `make deploy` again after any change: vault values, `inventory/hosts.yml`,
+the apps registry, a new version of this repository.
 
-```text
-controller$ uv run ansible-playbook playbooks/stacks.yml --ask-vault-pass -e '{"stacks_enabled": ["postgresql"]}'
-```
-
-### 4.1 CI/CD (Jenkins, optional)
-
-- [ ] `make vault-edit`: set `vault_jenkins_admin_password` (12+ characters).
-      Leave `vault_jenkins_github_token` and `vault_jenkins_portainer_token`
-      empty for now.
-
-```text
-controller$ make ci-cd             # builds the Jenkins images on MagicBox (several minutes)
-```
+### 4.1 CI/CD (Jenkins)
 
 - [ ] `https://magicbox.local:8443/jenkins/` opens (same CA as Portainer); log in as
       `admin` / `vault_jenkins_admin_password`.
@@ -211,30 +192,20 @@ Portainer token (for pipelines that deploy stacks):
 - [ ] `make vault-edit`: `vault_jenkins_portainer_token: "<token>"`.
 
 ```text
-controller$ make ci-cd             # adds credentials "github" and "portainer-api-token"
+controller$ make deploy            # adds credentials "github" and "portainer-api-token"
 ```
 
-- [ ] *Manage Jenkins > Credentials* lists `github` and `portainer-api-token`.
-- [ ] New Item > Multibranch Pipeline: Branch source GitHub, credential
-      `github`, repository URL; Scan triggers: *Periodically, interval 5 minutes*.
+- [ ] *Manage Jenkins > Credentials* lists `github`, `portainer-api-token` and
+      `registry`.
 - [ ] Repositories private; do not build pull requests from forks.
 
-### 4.2 API gateway (Kong, optional)
-
-Needs `make deploy` with this version first (opens ports 80 and 443 to the LAN).
-
-- [ ] `make vault-edit`: set `vault_kong_ollama_api_key` (12+ characters,
-      e.g. output of `openssl rand -hex 24`). It is the key for `/ollama/`.
-
-```text
-magicbox$ sudo docker pull kong:3.9.4
-controller$ make api-gateway
-```
+### 4.2 API gateway (Kong)
 
 - [ ] `https://magicbox.local/` opens Portainer (redirect to `/portainer/`).
-- [ ] `https://magicbox.local/grafana`, `/rabbitmq`, `/jenkins` (if
-      installed; with or without the final `/`) open their login page.
-- [ ] `https://magicbox.local/openwebui` redirects to Open WebUI (port 8444).
+- [ ] `https://magicbox.local/grafana`, `/rabbitmq`, `/jenkins` (with or
+      without the final `/`) open their login page.
+- [ ] `https://magicbox.local/openwebui`, `/rustfs`, `/registry` redirect to
+      their own ports.
 - [ ] Ollama (API only, no UI) answers with the key, `401` without it:
 
 ```text
@@ -246,16 +217,15 @@ controller$ curl -s -o /dev/null -w '%{http_code}\n' https://magicbox.local/olla
 |-----|-------|---------|
 | `vault_kong_ollama_api_key` | vault | Header `apikey: <key>` (or `?apikey=<key>`) on `https://magicbox.local/ollama/` |
 
-Rotate the key: change it with `make vault-edit`, run `make api-gateway`,
-update the clients.
+Rotate the key: change it with `make vault-edit`, run `make deploy`, update
+the clients.
 
 ### 4.3 Apps (Jenkins jobs, gateway routes)
 
-Needs 4.1 (credentials `github` and `portainer-api-token`) and 4.2. New app:
+Needs 4.1 (credentials `github` and `portainer-api-token`). New app:
 `manuals/how-to-create-new-app.pdf`.
 
 ```text
-controller$ make ci-cd             # once after upgrading: Job DSL plugin
 controller$ cp inventory/apps.example.yml inventory/group_vars/magicbox/apps.yml   # if missing
 ```
 
@@ -264,30 +234,19 @@ controller$ cp inventory/apps.example.yml inventory/group_vars/magicbox/apps.yml
 - [ ] The GitHub token (4.1) can read every `repo` listed.
 
 ```text
-controller$ make apps
+controller$ make deploy
 ```
 
 - [ ] Jenkins shows one job per app; new jobs start their first scan.
-- [ ] Each app's `main` build runs Lint, Test, Build, Deploy, Verify (green);
+- [ ] Each app's `main` build runs Lint, Test, Build, Push, Deploy, Verify (green);
       `https://magicbox.local/<name>` opens.
-- [ ] `make apps` again: every app `deployed`, `changed=0`.
+- [ ] `make deploy` again: every app `deployed`, `changed=0`.
 
-### 4.4 Object storage (RustFS, optional)
-
-- [ ] `make vault-edit`: set `vault_rustfs_access_key` (e.g.
-      `openssl rand -hex 12`) and `vault_rustfs_secret_key` (e.g.
-      `openssl rand -hex 24`), 12+ characters each.
-
-```text
-magicbox$ sudo docker pull rustfs/rustfs:1.0.4
-controller$ make storage
-```
+### 4.4 Object storage (RustFS)
 
 - [ ] `https://magicbox.local:9101/rustfs/console/` opens (same CA as
       Portainer); log in with the access key and the secret key.
 - [ ] Console: create a bucket, upload a file, download it.
-- [ ] With 4.2: `https://magicbox.local/rustfs` redirects to the console
-      (run `make api-gateway` once after adding RustFS).
 - [ ] S3 client (endpoint `https://magicbox.local:9100`, path-style, region
       `us-east-1`, the MagicBox CA trusted):
 
@@ -296,26 +255,62 @@ controller$ AWS_ACCESS_KEY_ID=<access> AWS_SECRET_ACCESS_KEY=<secret> AWS_CA_BUN
   aws --endpoint-url https://magicbox.local:9100 --region us-east-1 s3 ls
 ```
 
-- [ ] A second `make storage` reports `changed=0`.
-
-Rotate keys: change them with `make vault-edit`, run `make storage` (applied
+Rotate keys: change them with `make vault-edit`, run `make deploy` (applied
 at every start; data kept), update clients.
 
 Recreate from scratch (deletes every bucket and object):
 
 - [ ] Portainer, environment `homelab`: delete the stack `rustfs`.
 - [ ] `magicbox$ sudo docker volume rm rustfs_data`
-- [ ] `controller$ make storage`, then the checks above.
+- [ ] `controller$ make deploy`, then the checks above.
+
+### 4.5 Docker registry
+
+Images: `magicbox.local:5000/<name>:<tag>`, user `magicbox`,
+password `vault_registry_password`. MagicBox's own Docker engine (and the
+Jenkins agent) already trusts the registry; app pipelines push there and
+Portainer pulls from there.
+
+- [ ] Portainer > Registries lists `magicbox` (`magicbox.local:5000`).
+
+- [ ] Each LAN client that pushes or pulls trusts the CA for the registry
+      (section 6 for the system store, plus on Linux):
+
+```text
+client$ sudo mkdir -p /etc/docker/certs.d/magicbox.local:5000
+client$ sudo cp magicbox-local-ca.crt /etc/docker/certs.d/magicbox.local:5000/ca.crt
+```
+
+- [ ] Docker Desktop (macOS/Windows): CA installed as in section 6, then
+      restart Docker Desktop.
+- [ ] Push and pull work:
+
+```text
+client$ docker login magicbox.local:5000
+client$ docker pull hello-world && docker tag hello-world magicbox.local:5000/hello-world:test
+client$ docker push magicbox.local:5000/hello-world:test
+client$ curl --cacert magicbox-local-ca.crt -u magicbox https://magicbox.local:5000/v2/_catalog
+```
+
+Rotate the password: `make vault-edit`, `make deploy` (rehashes the
+password file and updates the Jenkins credential `registry`), then
+`docker login` again on the clients.
+
+Free disk space after deleting tags:
+
+```text
+magicbox$ sudo docker exec registry registry garbage-collect /etc/distribution/config.yml
+```
 
 ## 5. Verification
 
 ```text
-controller$ make verify
-controller$ make idempotency VAULT_PASSWORD_FILE=<file>
+controller$ make deploy EXTRA="--tags verify"
+controller$ uv run tools/idempotency_check.py playbooks/site.yml --vault-password-file <file>
 ```
 
-- [ ] `make verify` passes.
-- [ ] `make idempotency` ends with "Idempotency check passed". Keep the
+- [ ] The `--tags verify` run passes.
+- [ ] `idempotency_check.py` ends with "Idempotency check passed". Keep the
       password files outside the repo with mode 0600; delete them afterwards.
 - [ ] From another LAN computer: `ping magicbox.local` works.
 - [ ] Browser (CA trusted, section 6): `https://magicbox.local:9443/` opens with
@@ -323,24 +318,25 @@ controller$ make idempotency VAULT_PASSWORD_FILE=<file>
 - [ ] `sudo reboot` on MagicBox: the page comes back, settings kept.
 - [ ] `magicbox$ sudo ss -ltn | grep -E ':(9000|2375|2376) '` prints nothing.
 - [ ] Portainer > Environments shows `homelab`; Stacks shows `rabbitmq`,
-      `postgresql`, `ollama`, `observability`.
+      `postgresql`, `ollama`, `observability`, `rustfs`, `registry`,
+      `jenkins`, `kong`.
 - [ ] `make status` reports every image and container as OK.
-- [ ] A second `make stacks` reports `changed=0`.
 
 Services (from the LAN):
 
-| Service | Address | Gateway (4.2) | Login |
+| Service | Address | Gateway | Login |
 |---------|---------|---------------|-------|
 | Portainer | `https://magicbox.local:9443/` | `https://magicbox.local/portainer/` | `admin` / `vault_portainer_admin_password` |
 | Grafana | `https://magicbox.local:3000/grafana/` | `https://magicbox.local/grafana/` | `admin` / `vault_grafana_admin_password` |
 | RabbitMQ UI | `http://magicbox.local:15672/rabbitmq/` | `https://magicbox.local/rabbitmq/` | `magicbox` / `vault_rabbitmq_password` |
 | RabbitMQ AMQP | `amqp://magicbox.local:5672` | - | same as UI |
-| RustFS console (4.4) | `https://magicbox.local:9101/rustfs/console/` | `https://magicbox.local/rustfs` (redirect) | `vault_rustfs_access_key` / `vault_rustfs_secret_key` |
-| RustFS S3 API (4.4) | `https://magicbox.local:9100` (path-style, `us-east-1`) | - | same keys as the console |
+| RustFS console | `https://magicbox.local:9101/rustfs/console/` | `https://magicbox.local/rustfs` (redirect) | `vault_rustfs_access_key` / `vault_rustfs_secret_key` |
+| RustFS S3 API | `https://magicbox.local:9100` (path-style, `us-east-1`) | - | same keys as the console |
 | PostgreSQL | `magicbox.local:5432`, database `magicbox` | - | `magicbox` / `vault_postgresql_password` |
 | Open WebUI | `https://magicbox.local:8444/` | `https://magicbox.local/openwebui` (redirect) | `admin@magicbox.local` / `vault_openwebui_admin_password` |
 | Ollama API | `http://magicbox.local:11434/` | `https://magicbox.local/ollama/` | direct: none (LAN only); gateway: header `apikey` |
-| Jenkins (if installed) | `https://magicbox.local:8443/jenkins/` | `https://magicbox.local/jenkins/` | `admin` / `vault_jenkins_admin_password` |
+| Jenkins | `https://magicbox.local:8443/jenkins/` | `https://magicbox.local/jenkins/` | `admin` / `vault_jenkins_admin_password` |
+| Docker registry | `https://magicbox.local:5000/v2/` (`docker login magicbox.local:5000`) | `https://magicbox.local/registry` (redirect) | `magicbox` / `vault_registry_password` |
 | Tester App (4.3) | - | `https://magicbox.local/tester-app` | none |
 
 - [ ] Grafana > Explore > Loki: `{container="postgresql"}` shows logs.
@@ -399,21 +395,22 @@ renewed automatically by any playbook run within 30 days of expiry.
 | Vault password rejected at login | Portainer was already initialised: reset (8.4) |
 | `stacks`: "Portainer rejected the vault password" | Password changed in the UI: update `vault_portainer_admin_password` |
 | `stacks`: environment not found | Run `make deploy` first |
-| `make ci-cd`: Jenkins agent offline | `sudo docker logs jenkins-agent`; `sudo docker logs jenkins` (SSH errors) |
+| Jenkins agent offline | `sudo docker logs jenkins-agent`; `sudo docker logs jenkins` (SSH errors) |
 | Jenkins login fails | Password changed in the UI is reset at start: use `vault_jenkins_admin_password` |
-| `make api-gateway`: "ufw does not allow TCP port" | Run `make deploy` first |
-| App build: Deploy fails with HTTP 401 | `vault_jenkins_portainer_token` missing or expired: 4.1, then `make ci-cd` |
-| App URL returns 404 | App not in the apps registry or `make apps` not run |
-| `make apps`: "run `make ci-cd` first" | Jenkins predates the apps support: `make ci-cd` |
-| App build: "not in the MagicBox apps registry" | Add it to `inventory/group_vars/magicbox/apps.yml`, `make apps` |
+| Kong: "ufw does not allow TCP port" | Run `make deploy` without `--tags` |
+| App build: Deploy fails with HTTP 401 | `vault_jenkins_portainer_token` missing or expired: 4.1, then `make deploy` |
+| App URL returns 404 | App not in the apps registry or `make deploy` not run |
+| App build: "not in the MagicBox apps registry" | Add it to `inventory/group_vars/magicbox/apps.yml`, `make deploy` |
 | App URL returns 502 | App not deployed yet or wrong `port`: Jenkins build log; `sudo docker ps` |
-| Gateway route returns 502 | Service not running: `make status`; Jenkins needs `make ci-cd` |
+| Gateway route returns 502 | Service not running: `make status`, then `make deploy` |
 | Gateway `/ollama/` returns 401 | Send header `apikey: <vault_kong_ollama_api_key>` |
 | Old bookmark (`:3000/`, `:15672/`, `:8443/`) shows 404 | Add `/grafana/`, `/rabbitmq/`, `/jenkins/` to the URL |
-| `make stacks` waits a long time | `make status` (MISSING image: pull it, see 4) |
+| `make deploy` waits a long time on stacks | `make status` (MISSING image: `sudo docker pull <image>`) |
 | Image pull stuck (Ollama) | `sudo docker pull ollama/ollama:0.40.12` on MagicBox; `df -h /var/lib` |
-| `stacks`: wait for containers times out | The error lists container states and logs; slow pull: re-run `make stacks` |
+| `stacks`: wait for containers times out | The error lists container states and logs; slow pull: re-run `make deploy` |
 | Stack service rejects the vault password | Password was set at first start; change it in the service, then in the vault |
+| `docker push`: "x509: certificate signed by unknown authority" | Client does not trust the CA for `magicbox.local:5000`: 4.5 |
+| `docker push`: "no basic auth credentials" / 401 | `docker login magicbox.local:5000` with `vault_registry_password` |
 
 ## 8. Recovery
 
@@ -455,7 +452,8 @@ magicbox$ sudo docker start portainer
 
 Stack data lives in the volumes `postgresql_data`, `rabbitmq_data`,
 `grafana_data`, `loki_data`, `ollama_data`, `open_webui_data` (chats,
-users) and `rustfs_data` (buckets) under
+users), `rustfs_data` (buckets), `registry_data` (images) and
+`jenkins_home` under
 `/var/lib/docker/volumes/`.
 Stop the stack in Portainer before copying a volume. For PostgreSQL, prefer
 a logical dump:
@@ -470,6 +468,6 @@ and start Portainer.
 
 ### 8.6 Rotate the CA
 
-Delete `/opt/magicbox/portainer/certs/` on MagicBox, run `make deploy`,
-`make stacks`, `make ci-cd` and `make api-gateway` (if installed), and
-install the new CA on every client. Remove the old CA from the clients.
+Delete `/opt/magicbox/portainer/certs/` on MagicBox, run `make deploy`, and
+install the new CA on every client (also in `/etc/docker/certs.d/` for the
+registry, 4.5). Remove the old CA from the clients.

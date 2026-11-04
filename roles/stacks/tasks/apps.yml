@@ -1,0 +1,9 @@
+---
+# Apps play of `make deploy` (ADR-0016, ADR-0017). Inside the role, so that
+# its defaults (stacks_enabled) are visible to the conditions.
+- name: Create the Jenkins jobs of the apps
+  ansible.builtin.include_tasks: apps_jenkins.yml
+  when: "'jenkins' in stacks_enabled"
+
+- name: Report the registered apps
+  ansible.builtin.include_tasks: apps_report.yml

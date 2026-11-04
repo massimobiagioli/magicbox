@@ -47,32 +47,19 @@ make check           # syntax, yamllint, ansible-lint, secrets, manuals, docs ch
 make test-container  # converge + idempotency in a disposable systemd container
 make manuals         # build manuals/*.pdf from manuals/src/*.md
 make deploy EXTRA="-e magicbox_confirm_destructive=true"   # first deployment
-make deploy          # later runs (asks the vault password; sudo password is in the vault)
-make verify
-make stacks          # default Portainer stacks
-make ci-cd           # CI/CD stack: Jenkins controller + SSH build agent
-make api-gateway     # API gateway stack: Kong, https://magicbox.local/<service>/
-make storage         # object storage stack: RustFS (S3 API :9100, console :9101)
-uv run tools/new_app.py <name> [--create-repo]          # new app from the template + registry entry
-make apps            # apps registry -> Kong routes + Jenkins jobs (https://magicbox.local/<app>)
+make deploy          # whole infrastructure, idempotent: host, Portainer, every stack, apps
+                     # (asks the vault password; sudo password is in the vault)
+uv run tools/new_app.py <name> [--create-repo]          # new app from the template + registry entry, then make deploy
 make status          # read-only: stack images pulled, containers running/healthy
 make vault-edit      # edit the encrypted vault (creates it if missing)
 make update          # apt update + upgrade (EXTRA="-e os_update_reboot=true" reboots if needed)
-make test-container ARGS="--with-stacks"                   # includes stacks (~4 GB pulls)
-make test-container ARGS="--with-ci-cd"                    # includes the Jenkins stack
-make test-container ARGS="--with-api-gateway"              # includes the Kong stack
-make test-container ARGS="--with-storage"                  # includes the RustFS stack
-make test-container ARGS="--with-ci-cd --with-api-gateway --with-apps"  # includes app routes and jobs
+make test-container ARGS="--stacks all"                    # whole make deploy (~6 GB pulls, Jenkins build)
+make test-container ARGS="--stacks registry,jenkins,kong"  # only these stacks (+ app jobs with jenkins)
 ```
 
 ## Layout
 
-- `playbooks/site.yml` - host + Portainer (roles + controller verification play)
-- `playbooks/stacks.yml` - default Portainer stacks (RabbitMQ, PostgreSQL, Ollama + Open WebUI, Grafana/Loki/Alloy)
-- `playbooks/ci-cd.yml` - CI/CD stack (Jenkins) via the `stacks` role
-- `playbooks/api-gateway.yml` - API gateway stack (Kong) via the `stacks` role
-- `playbooks/storage.yml` - object storage stack (RustFS, S3-compatible) via the `stacks` role
-- `playbooks/apps.yml` - apps registry -> Kong routes, Jenkins jobs (Job DSL), `/opt/magicbox/apps/apps.json`
+- `playbooks/site.yml` - the whole installation (`make deploy`): host + Portainer roles, controller verification, every stack (RabbitMQ, PostgreSQL, Ollama + Open WebUI, Grafana/Loki/Alloy, RustFS, Docker registry, Jenkins, Kong), apps registry -> Jenkins jobs (Job DSL), `/opt/magicbox/apps/apps.json`
 - `playbooks/status.yml` - read-only stack status (images, containers)
 - `playbooks/update.yml` - OS package update (apt update + upgrade), optional reboot
 - `roles/` - `preflight`, `mdns`, `firewall`, `docker`, `portainer`, `portainer_init`, `stacks`, `os_update`
@@ -112,6 +99,8 @@ make test-container ARGS="--with-ci-cd --with-api-gateway --with-apps"  # includ
   - [ADR-0017](.docs/adr/adr-0017.md) - App jobs and ports from a git-ignored apps registry
   - [ADR-0018](.docs/adr/adr-0018.md) - RustFS object storage with the console on its own port
   - [ADR-0019](.docs/adr/adr-0019.md) - Open WebUI in the Ollama stack, on its own HTTPS port
+  - [ADR-0020](.docs/adr/adr-0020.md) - Private Docker registry on MagicBox for app images
+  - [ADR-0021](.docs/adr/adr-0021.md) - One idempotent `make deploy` for the whole infrastructure
 
 ## Manuals
 
@@ -130,4 +119,4 @@ produces deterministic PDFs.
 - [tools/check_secrets.py](tools/check_secrets.py) - vault file encrypted; no plaintext `vault_*` values or private keys tracked
 - [tools/idempotency_check.py](tools/idempotency_check.py) - runs `ansible-playbook` twice, fails if the second run changes anything
 - [tools/new_app.py](tools/new_app.py) - new app from the template: rename, `uv lock`, first commit, apps registry entry (first free port), optional private GitHub repo (`--create-repo`)
-- [tools/container_test.py](tools/container_test.py) - disposable systemd container: full converge + idempotency check (`--with-stacks` adds the stacks playbook, `--with-ci-cd` the Jenkins playbook, `--with-api-gateway` the Kong playbook, `--with-storage` the RustFS playbook, `--with-apps` the apps playbook, needs the Jenkins and Kong ones)
+- [tools/container_test.py](tools/container_test.py) - disposable systemd container: `playbooks/site.yml` converge + idempotency check (host only by default; `--stacks all` the whole deployment, `--stacks a,b` a subset of stacks)

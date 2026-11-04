@@ -1,9 +1,10 @@
 # MagicBox
 
 Ansible setup for a GMKtec Intel Mini PC: Docker and Portainer CE, served on
-the LAN at **https://magicbox.local:9443/**, plus default stacks: RabbitMQ,
-PostgreSQL, Ollama + Open WebUI, and Grafana + Loki + Alloy. Optional: Jenkins (CI/CD), a
-Kong API gateway at **https://magicbox.local/** and RustFS (S3 object storage).
+the LAN at **https://magicbox.local:9443/**, plus stacks: RabbitMQ,
+PostgreSQL, Ollama + Open WebUI, Grafana + Loki + Alloy, RustFS (S3 object
+storage), a Docker registry, Jenkins (CI/CD) and a Kong API gateway at
+**https://magicbox.local/**. One idempotent command installs everything.
 
 ## Quick start
 
@@ -11,20 +12,15 @@ Kong API gateway at **https://magicbox.local/** and RustFS (S3 object storage).
 make setup && make check
 cp inventory/hosts.example.yml inventory/hosts.yml   # fill in your values
 make vault-edit                                      # passwords (encrypted)
-make deploy EXTRA="-e magicbox_confirm_destructive=true"
-make stacks
-make ci-cd          # optional: Jenkins
-make api-gateway    # optional: Kong, https://magicbox.local/<service>/
-make storage        # optional: RustFS, S3 API :9100, console :9101
-make apps           # apps registry -> Kong routes + Jenkins jobs
+make deploy EXTRA="-e magicbox_confirm_destructive=true"   # first run
+make deploy                                                # every later run (idempotent)
 ```
 
 ## Addresses
 
 From a LAN computer that trusts the MagicBox CA (installation guide, section 6).
-Gateway URLs need `make api-gateway`; Jenkins needs `make ci-cd`; RustFS
-needs `make storage`; apps
-(registry `inventory/group_vars/magicbox/apps.yml`, git-ignored) need `make apps`.
+Apps come from the apps registry `inventory/group_vars/magicbox/apps.yml`
+(git-ignored), applied by `make deploy`.
 
 | Service | Via the gateway (Kong) | Direct | Login |
 |---------|------------------------|--------|-------|
@@ -37,6 +33,7 @@ needs `make storage`; apps
 | Tester App | `https://magicbox.local/tester-app` | - (loopback, port from the apps registry) | none |
 | RustFS console | `https://magicbox.local/rustfs` (redirect) | `https://magicbox.local:9101/rustfs/console/` | `vault_rustfs_access_key` / `vault_rustfs_secret_key` |
 | RustFS S3 API | - (signed paths, ADR-0018) | `https://magicbox.local:9100` (path-style, region `us-east-1`) | same keys as the console |
+| Docker registry | `https://magicbox.local/registry` (redirect) | `https://magicbox.local:5000/v2/` (`docker login magicbox.local:5000`) | `magicbox` / `vault_registry_password` |
 | RabbitMQ AMQP | - | `amqp://magicbox.local:5672` | as RabbitMQ UI |
 | PostgreSQL | - | `magicbox.local:5432`, database `magicbox` | `magicbox` / `vault_postgresql_password` |
 
@@ -47,5 +44,5 @@ needs `make storage`; apps
 
 - [Installation guide](manuals/installation.pdf), which starts with the Mini PC checklist
 - [Playbook reference](manuals/magicbox-playbook.pdf)
-- [How to create a new app](manuals/how-to-create-new-app.pdf): `tools/new_app.py` -> `make apps`
+- [How to create a new app](manuals/how-to-create-new-app.pdf): `tools/new_app.py` -> `make deploy`
 - [Project instructions and full index](CLAUDE.md)

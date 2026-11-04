@@ -1,7 +1,8 @@
-// CI/CD on the MagicBox Jenkins. The job is created by `make apps` from the
+// CI/CD on the MagicBox Jenkins. The job is created by `make deploy` from the
 // MagicBox apps registry; its name is the app name (stack, container, URL path).
 // Every branch: lint + unit tests. Branch main only: build the image on
-// MagicBox, deploy the Portainer stack, check the new container is healthy.
+// MagicBox, push it to the MagicBox registry, deploy the Portainer stack
+// (which pulls it from the registry), check the new container is healthy.
 pipeline {
   agent { label 'docker' }
 
@@ -18,7 +19,9 @@ pipeline {
           // Multibranch: JOB_NAME is "<app>/<branch>".
           env.APP = env.JOB_NAME.split('/')[0]
           env.TAG = sh(script: 'git rev-parse --short=12 HEAD', returnStdout: true).trim()
-          env.IMAGE = "magicbox/${env.APP}:${env.TAG}"
+          // MagicBox Docker registry (ADR-0020); the host engine trusts its CA.
+          env.REGISTRY = 'magicbox.local:5000'
+          env.IMAGE = "${env.REGISTRY}/${env.APP}:${env.TAG}"
           env.CI_IMAGE = "magicbox/${env.APP}-ci:${env.TAG}"
         }
         // The agent drives the MagicBox Docker engine: workspace bind mounts would
@@ -46,12 +49,29 @@ pipeline {
       }
     }
 
+    stage('Push') {
+      when { branch 'main' }
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'registry',
+                                          usernameVariable: 'REGISTRY_USER',
+                                          passwordVariable: 'REGISTRY_PASSWORD')]) {
+          // Throwaway client config: the login does not outlive this step.
+          sh '''
+            DOCKER_CONFIG=$(mktemp -d); export DOCKER_CONFIG
+            trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+            printf '%s' "$REGISTRY_PASSWORD" | docker login --username "$REGISTRY_USER" --password-stdin "$REGISTRY"
+            docker push "$IMAGE"
+          '''
+        }
+      }
+    }
+
     stage('Deploy') {
       when { branch 'main' }
       steps {
         withCredentials([string(credentialsId: 'portainer-api-token', variable: 'PORTAINER_TOKEN')]) {
           // Host network + loopback: ufw admits Portainer (9443) only from the LAN.
-          // The host port comes from the apps registry written by `make apps`.
+          // The host port comes from the apps registry written by `make deploy`.
           sh '''
             docker run --rm --network host --add-host magicbox.local:127.0.0.1 \
               -v /opt/magicbox/portainer/certs/ca.crt:/run/magicbox-ca.crt:ro \
@@ -91,10 +111,13 @@ pipeline {
     success {
       script {
         if (env.BRANCH_NAME == 'main') {
-          // Keep only the deployed image; older tags are no longer used by the stack.
+          // Keep only the deployed image locally; every tag stays in the registry.
+          // magicbox/$APP: local-only images of template versions before the registry.
           sh '''
-            docker images "magicbox/$APP" --format '{{.Tag}}' | grep -vx "$TAG" \
-              | xargs -r -I{} docker rmi "magicbox/$APP:{}" || true
+            docker images "$REGISTRY/$APP" --format '{{.Tag}}' | grep -vx "$TAG" \
+              | xargs -r -I{} docker rmi "$REGISTRY/$APP:{}" || true
+            docker images "magicbox/$APP" --format '{{.Repository}}:{{.Tag}}' \
+              | xargs -r docker rmi || true
           '''
         }
       }

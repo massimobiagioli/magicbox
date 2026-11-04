@@ -1,5 +1,5 @@
 ---
-# Jenkins side of `make apps` (ADR-0017): apps.json for the pipelines, one
+# Jenkins side of `make deploy` (ADR-0017): apps.json for the pipelines, one
 # Multibranch Pipeline per app (Job DSL through JCasC), first branch scan.
 - name: Read the Jenkins controller container
   community.docker.docker_container_info:
@@ -11,7 +11,7 @@
     that:
       - stacks_apps_jenkins.exists
       - "'CASC_JENKINS_CONFIG=/etc/jenkins/casc' in stacks_apps_jenkins.container.Config.Env"
-    fail_msg: Jenkins is missing or older than the apps support; run `make ci-cd` first.
+    fail_msg: Jenkins is missing or older than the apps support; run `make deploy` first.
     quiet: true
 
 - name: Create the apps directory

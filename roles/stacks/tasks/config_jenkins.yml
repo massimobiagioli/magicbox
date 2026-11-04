@@ -76,6 +76,7 @@
     - { name: jenkins_admin_password, value: "{{ stacks_jenkins_admin_password }}" }
     - { name: github_token, value: "{{ stacks_jenkins_github_token }}" }
     - { name: portainer_api_token, value: "{{ stacks_jenkins_portainer_token }}" }
+    - { name: registry_password, value: "{{ stacks_registry_password }}" }
   when: item.value | length > 0
   loop_control:
     label: "{{ item.name }}"
@@ -88,6 +89,7 @@
   loop:
     - { name: github_token, value: "{{ stacks_jenkins_github_token }}" }
     - { name: portainer_api_token, value: "{{ stacks_jenkins_portainer_token }}" }
+    - { name: registry_password, value: "{{ stacks_registry_password }}" }
   when: item.value | length == 0
   loop_control:
     label: "{{ item.name }}"
@@ -126,6 +128,7 @@
     - secrets/jenkins_admin_password
     - secrets/github_token
     - secrets/portainer_api_token
+    - secrets/registry_password
     - tls/jenkins.p12
     - agent-hostkey/ssh_host_ed25519_key
   register: stacks_jenkins_files

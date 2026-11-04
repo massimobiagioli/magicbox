@@ -3,7 +3,7 @@
 # UI to these settings are overwritten. ${name} values are read from files in
 # /run/secrets (written by Ansible from the vault).
 jenkins:
-  systemMessage: "MagicBox CI/CD - configured by Ansible (playbooks/ci-cd.yml)"
+  systemMessage: "MagicBox CI/CD - configured by Ansible (make deploy)"
   # Builds never run on the controller: it holds the credentials.
   numExecutors: 0
   mode: EXCLUSIVE
@@ -68,4 +68,12 @@ credentials:
               id: portainer-api-token
               description: Portainer API token (vault_jenkins_portainer_token)
               secret: "${portainer_api_token}"
+{% endif %}
+{% if stacks_registry_password | length > 0 %}
+          - usernamePassword:
+              scope: GLOBAL
+              id: registry
+              description: MagicBox Docker registry login (vault_registry_password)
+              username: "{{ stacks_registry_user }}"
+              password: "${registry_password}"
 {% endif %}

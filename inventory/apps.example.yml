@@ -2,7 +2,7 @@
 # Template for inventory/group_vars/magicbox/apps.yml (git-ignored, loaded by
 # Ansible for every playbook): the MagicBox apps registry (ADR-0016, ADR-0017).
 # `uv run tools/new_app.py <name>` creates an app and adds its entry here;
-# `make apps` then adds the Kong route https://magicbox.local/<name> and the
+# `make deploy` then adds the Kong route https://magicbox.local/<name> and the
 # Jenkins Multibranch Pipeline <name>.
 #
 #   name: Jenkins job, Portainer stack, container and URL path (/<name>).

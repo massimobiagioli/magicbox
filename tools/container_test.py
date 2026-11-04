@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""End-to-end test of playbooks/site.yml against a disposable systemd container.
+"""End-to-end test of `make deploy` (playbooks/site.yml) in a disposable systemd container.
 
 Usage:
-    uv run tools/container_test.py [--keep] [--with-stacks] [--with-ci-cd] [--with-api-gateway] [--with-storage] [--with-apps]
+    uv run tools/container_test.py [--keep] [--stacks all|NAME[,NAME...]]
 
 Builds tests/container/Dockerfile, starts a privileged systemd container named
-`magicbox-test`, runs the playbook twice through tools/idempotency_check.py
-(confirming destructive steps, which only affect the container), and removes
-the container unless --keep is given. With --with-stacks it then runs
-playbooks/stacks.yml twice as well (pulls about 4 GB of images); with
---with-ci-cd it runs playbooks/ci-cd.yml twice (builds the Jenkins images);
-with --with-api-gateway it runs playbooks/api-gateway.yml twice (Kong); with
---with-storage it runs playbooks/storage.yml twice (RustFS); with
---with-apps (needs --with-ci-cd --with-api-gateway) it runs playbooks/apps.yml
-twice (app routes in Kong, app jobs in Jenkins).
+`magicbox-test`, runs playbooks/site.yml twice through
+tools/idempotency_check.py (confirming destructive steps, which only affect
+the container), and removes the container unless --keep is given.
+
+Without --stacks only the host and Portainer are converged (tags `stacks` and
+`apps` skipped). `--stacks all` runs the whole deployment, as `make deploy`
+does (pulls about 6 GB of images and builds the Jenkins images);
+`--stacks jenkins,kong` deploys only those stacks (stacks_enabled override;
+the app jobs need `jenkins`).
 Requires a local Docker daemon.
 
 The container differs from MagicBox (architecture, nested Docker, no real LAN),
@@ -23,6 +23,7 @@ on the real host works.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -38,14 +39,23 @@ def sh(*cmd: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 
 def main() -> None:
-    keep = "--keep" in sys.argv[1:]
-    with_stacks = "--with-stacks" in sys.argv[1:]
-    with_ci_cd = "--with-ci-cd" in sys.argv[1:]
-    with_api_gateway = "--with-api-gateway" in sys.argv[1:]
-    with_storage = "--with-storage" in sys.argv[1:]
-    with_apps = "--with-apps" in sys.argv[1:]
-    if with_apps and not (with_ci_cd and with_api_gateway):
-        sys.exit("--with-apps needs --with-ci-cd and --with-api-gateway (Jenkins and Kong)")
+    args = sys.argv[1:]
+    keep = "--keep" in args
+    stacks: str | None = None
+    if "--stacks" in args:
+        index = args.index("--stacks")
+        if index + 1 >= len(args) or args[index + 1].startswith("--"):
+            sys.exit("--stacks needs 'all' or a comma-separated list of stack names")
+        stacks = args[index + 1]
+    # controller-verify is always skipped: the controller cannot resolve the
+    # container's mDNS name.
+    if stacks is None:
+        selection = ["--skip-tags", "controller-verify,stacks,apps"]
+    elif stacks == "all":
+        selection = ["--skip-tags", "controller-verify"]
+    else:
+        names = [name.strip() for name in stacks.split(",") if name.strip()]
+        selection = ["--skip-tags", "controller-verify", "-e", json.dumps({"stacks_enabled": names})]
     sh("docker", "build", "-q", "-t", IMAGE, str(ROOT / "tests/container"))
     sh("docker", "rm", "-f", NAME, check=False)
     sh("docker", "volume", "rm", "-f", f"{NAME}-docker", f"{NAME}-containerd", check=False)
@@ -65,39 +75,8 @@ def main() -> None:
             "-i", str(ROOT / "tests/container/hosts.yml"),
             str(ROOT / "playbooks/site.yml"),
             "-e", "magicbox_confirm_destructive=true",
-            # The controller cannot resolve the container's mDNS name.
-            "--skip-tags", "controller-verify",
+            *selection,
         )
-        if with_stacks:
-            sh(
-                sys.executable, str(ROOT / "tools/idempotency_check.py"),
-                "-i", str(ROOT / "tests/container/hosts.yml"),
-                str(ROOT / "playbooks/stacks.yml"),
-            )
-        if with_ci_cd:
-            sh(
-                sys.executable, str(ROOT / "tools/idempotency_check.py"),
-                "-i", str(ROOT / "tests/container/hosts.yml"),
-                str(ROOT / "playbooks/ci-cd.yml"),
-            )
-        if with_api_gateway:
-            sh(
-                sys.executable, str(ROOT / "tools/idempotency_check.py"),
-                "-i", str(ROOT / "tests/container/hosts.yml"),
-                str(ROOT / "playbooks/api-gateway.yml"),
-            )
-        if with_storage:
-            sh(
-                sys.executable, str(ROOT / "tools/idempotency_check.py"),
-                "-i", str(ROOT / "tests/container/hosts.yml"),
-                str(ROOT / "playbooks/storage.yml"),
-            )
-        if with_apps:
-            sh(
-                sys.executable, str(ROOT / "tools/idempotency_check.py"),
-                "-i", str(ROOT / "tests/container/hosts.yml"),
-                str(ROOT / "playbooks/apps.yml"),
-            )
     finally:
         if not keep:
             sh("docker", "rm", "-f", NAME, check=False)

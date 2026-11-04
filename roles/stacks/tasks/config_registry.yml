@@ -1,0 +1,94 @@
+---
+# Docker registry (ADR-0020): HTTPS with a copy of the MagicBox certificate,
+# htpasswd (bcrypt) login, and the MagicBox Docker engine trusting the CA.
+- name: Create the registry directories
+  ansible.builtin.file:
+    path: "{{ stacks_base_dir }}/registry/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ '0755' if item == '' else '0700' }}"
+  loop: ["", tls, auth]
+
+- name: Give the registry a copy of the MagicBox TLS certificate and key
+  ansible.builtin.copy:
+    src: "{{ magicbox_portainer_ca_cert | dirname }}/{{ item.src }}"
+    dest: "{{ stacks_base_dir }}/registry/tls/{{ item.dest }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0400"
+  loop:
+    - { src: portainer.crt, dest: registry.crt }
+    - { src: portainer.key, dest: registry.key }
+  register: stacks_registry_tls
+
+# bcrypt hashes are salted, so the file is only rewritten when the vault
+# password no longer matches it. htpasswd reads the password from stdin.
+- name: Read the registry password file
+  ansible.builtin.stat:
+    path: "{{ stacks_base_dir }}/registry/auth/htpasswd"
+  register: stacks_registry_htpasswd_file
+
+- name: Check the registry password file against the vault password
+  ansible.builtin.command:
+    argv: [docker, run, --rm, -i, --network, none,
+           -v, "{{ stacks_base_dir }}/registry/auth:/auth:ro",
+           "{{ stacks_registry_htpasswd_image }}", htpasswd, -vi, /auth/htpasswd, "{{ stacks_registry_user }}"]
+    stdin: "{{ stacks_registry_password }}"
+  register: stacks_registry_htpasswd_check
+  changed_when: false
+  failed_when: false
+  when: stacks_registry_htpasswd_file.stat.exists
+  no_log: true
+
+- name: Hash the registry password (bcrypt)
+  ansible.builtin.command:
+    argv: [docker, run, --rm, -i, --network, none,
+           "{{ stacks_registry_htpasswd_image }}", htpasswd, -niB, -C, "10", "{{ stacks_registry_user }}"]
+    stdin: "{{ stacks_registry_password }}"
+  register: stacks_registry_htpasswd_new
+  changed_when: false
+  when: not stacks_registry_htpasswd_file.stat.exists or stacks_registry_htpasswd_check.rc != 0
+  no_log: true
+
+- name: Write the registry password file
+  ansible.builtin.copy:
+    content: "{{ stacks_registry_htpasswd_new.stdout | trim }}\n"
+    dest: "{{ stacks_base_dir }}/registry/auth/htpasswd"
+    owner: root
+    group: root
+    mode: "0400"
+  when: stacks_registry_htpasswd_new is not skipped
+  no_log: true
+
+# The engine reads certs.d on every push and pull: no daemon restart.
+- name: Create the Docker engine certificate directory of the registry
+  ansible.builtin.file:
+    path: "/etc/docker/certs.d/{{ stacks_registry_address }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Make the MagicBox Docker engine trust the registry certificate
+  ansible.builtin.copy:
+    src: "{{ magicbox_portainer_ca_cert }}"
+    dest: "/etc/docker/certs.d/{{ stacks_registry_address }}/ca.crt"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Fingerprint the registry files
+  ansible.builtin.stat:
+    path: "{{ stacks_base_dir }}/registry/{{ item }}"
+    checksum_algorithm: sha256
+  loop: [tls/registry.crt, tls/registry.key, auth/htpasswd]
+  register: stacks_registry_files
+
+- name: Derive a configuration revision that redeploys the registry when files change
+  ansible.builtin.set_fact:
+    stacks_config_revision: >-
+      {{ (stacks_registry_files.results | map(attribute='stat.checksum') | join(','))
+         | hash('sha256') | truncate(16, true, '') }}

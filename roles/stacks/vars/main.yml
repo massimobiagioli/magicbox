@@ -21,6 +21,8 @@ stacks_env:
   rustfs:
     RUSTFS_ACCESS_KEY: "{{ stacks_rustfs_access_key }}"
     RUSTFS_SECRET_KEY: "{{ stacks_rustfs_secret_key }}"
+  # The registry reads its password hash from a file (config_registry.yml).
+  registry: {}
 
 # Passwords each stack needs (checked before deployment).
 stacks_required_secrets:
@@ -31,6 +33,7 @@ stacks_required_secrets:
   jenkins: [stacks_jenkins_admin_password]
   kong: [stacks_kong_ollama_api_key]
   rustfs: [stacks_rustfs_access_key, stacks_rustfs_secret_key]
+  registry: [stacks_registry_password]
 
 # Containers created by each stack (used by verification).
 stacks_containers:
@@ -41,6 +44,7 @@ stacks_containers:
   jenkins: [jenkins, jenkins-agent]
   kong: [kong]
   rustfs: [rustfs]
+  registry: [registry]
 
 stacks_images:
   rabbitmq: ["{{ stacks_rabbitmq_image }}"]
@@ -50,6 +54,7 @@ stacks_images:
   jenkins: ["{{ stacks_jenkins_controller_image }}", "{{ stacks_jenkins_agent_image }}"]
   kong: ["{{ stacks_kong_image }}"]
   rustfs: ["{{ stacks_rustfs_image }}"]
+  registry: ["{{ stacks_registry_image }}"]
 
 # Jenkins images built on MagicBox. The tag carries a hash of the build files,
 # so changing a base image, plugin or script yields a new tag, a new build and
@@ -133,7 +138,8 @@ stacks_kong_all_routes: "{{ stacks_kong_routes + stacks_kong_app_routes }}"
 # Gateway paths that redirect (301) to a UI on its own port, for UIs that
 # cannot live under a gateway path: the RustFS console sends its S3 and admin
 # calls to the page's origin (ADR-0018); Open WebUI uses absolute paths
-# (ADR-0019).
+# (ADR-0019); Docker clients need the registry API at the root, /v2/
+# (ADR-0020).
 stacks_kong_port_redirects:
   - name: rustfs
     path: /rustfs
@@ -141,14 +147,23 @@ stacks_kong_port_redirects:
   - name: openwebui
     path: /openwebui
     location: "https://{{ magicbox_hostname }}.local:{{ stacks_openwebui_port }}/"
+  - name: registry
+    path: /registry
+    location: "https://{{ magicbox_hostname }}.local:{{ stacks_registry_port }}/v2/_catalog"
 
 # Host ports an app must not use (services, gateway, Kong admin/status).
 stacks_reserved_ports: >-
   {{ [stacks_rabbitmq_amqp_port, stacks_rabbitmq_management_port, stacks_postgresql_port,
       stacks_ollama_port, stacks_openwebui_port, stacks_grafana_port, stacks_jenkins_port,
       stacks_kong_http_port, stacks_kong_https_port, stacks_rustfs_api_port, stacks_rustfs_console_port,
+      stacks_registry_port,
       magicbox_portainer_api_url | urlsplit('port'), 8001, 8100]
      | map('int') | list }}
 
-# Jenkins API used by `make apps` (same endpoint as the CI/CD verification).
+# Jenkins API used by the apps tasks (same endpoint as the CI/CD verification).
 stacks_apps_jenkins_url: "https://{{ magicbox_hostname }}.local:{{ stacks_jenkins_port }}/jenkins"
+
+# Registry address in image names, certs.d and Portainer (ADR-0020).
+stacks_registry_address: "{{ magicbox_hostname }}.local:{{ stacks_registry_port }}"
+# Name of the registry in Portainer (Registries page).
+stacks_registry_portainer_name: magicbox

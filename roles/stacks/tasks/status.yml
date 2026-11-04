@@ -42,6 +42,6 @@
     that: stacks_status_report | reject('match', '^OK ') | list | length == 0
     fail_msg: >-
       Not ready: {{ stacks_status_report | reject('match', '^OK ') | join('; ') }}.
-      Missing image: sudo docker pull <image> on MagicBox. Missing container: make stacks.
+      Missing image: sudo docker pull <image> on MagicBox. Missing container: make deploy.
       NOT OK: sudo docker logs <container>.
     quiet: true

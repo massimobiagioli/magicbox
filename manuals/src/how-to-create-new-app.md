@@ -7,10 +7,11 @@ Replace `<app>` (lowercase letters, digits, hyphens; e.g. `orders-api`).
 
 ## 0. Prerequisites (once)
 
-- [ ] MagicBox running: `make deploy`, `make stacks`.
+- [ ] MagicBox installed: `make deploy` (installation guide 4).
 - [ ] Jenkins with credentials `github` and `portainer-api-token`
-      (installation guide 4.1): `make ci-cd`.
-- [ ] API gateway: `make api-gateway` (installation guide 4.2).
+      (installation guide 4.1); credential `registry` (4.5).
+- [ ] Apps created before the registry: copy `Jenkinsfile` and `deploy/`
+      from `templates/python-fastapi-app` into the app repository and push.
 - [ ] `stacks_jenkins_github_user` set in `inventory/hosts.yml`.
 - [ ] GitHub token of Jenkins with access to **All repositories** (Contents:
       Read-only, Commit statuses: Read and write), so new repositories need
@@ -50,7 +51,7 @@ magicbox_apps:
 ## 2. Register it on MagicBox
 
 ```text
-controller$ make apps
+controller$ make deploy
 ```
 
 - [ ] Ends with `failed=0`; the report lists `<app>: registered, not deployed yet`.
@@ -59,11 +60,12 @@ controller$ make apps
 
 ## 3. First deployment
 
-- [ ] Build `<app> > main > #1`: Prepare, Lint, Test, Build, Deploy, Verify
+- [ ] Build `<app> > main > #1`: Prepare, Lint, Test, Build, Push, Deploy, Verify
       green (the first build is slower: base image pull).
-- [ ] Deploy log: `Created stack '<app>'`.
+- [ ] Push log: `magicbox.local:5000/<app>:<commit>` pushed. Deploy log:
+      `Created stack '<app>'`.
 - [ ] `https://magicbox.local/<app>/health` answers `{"status":"ok"}`.
-- [ ] Optional: `make apps` reports `<app>: deployed`.
+- [ ] Optional: `make deploy` reports `<app>: deployed`.
 
 ## 4. Develop
 
@@ -84,7 +86,7 @@ controller$ uv run ruff check . && uv run ruff format --check . && uv run pytest
 ## 5. Remove an app
 
 - [ ] Delete its entry from `inventory/group_vars/magicbox/apps.yml`, then
-      `make apps` (removes the route and the port).
+      `make deploy` (removes the route and the port).
 - [ ] Jenkins: delete the job `<app>`. Portainer: delete the stack `<app>`.
 
 ## 6. Test an app again from scratch
@@ -94,7 +96,7 @@ Keep the registry entry; only the job and the stack are reset.
 - [ ] Portainer (`https://magicbox.local:9443/`), environment `homelab`: delete
       the stack `<app>` (removes the container).
 - [ ] Jenkins: delete the job `<app>` (with its builds).
-- [ ] `controller$ make apps`: recreates the job and starts its first scan,
+- [ ] `controller$ make deploy`: recreates the job and starts its first scan,
       even when the registry is unchanged.
 - [ ] Steps 2 and 3 again; Deploy log `Created stack '<app>'` (without the
       stack reset: `Updated stack`).
@@ -106,12 +108,12 @@ Keep the registry entry; only the job and the stack are reset.
 | `new_app.py`: "set stacks_jenkins_github_user" | Set it in `inventory/hosts.yml` or pass `--repo` |
 | `new_app.py`: "already exists" | Pick another name or delete the folder |
 | `gh` fails | `gh auth login`, then create the repository and push by hand (step 1) |
-| `make apps`: "run `make ci-cd` first" | Jenkins predates the apps support: `make ci-cd` |
-| `make apps`: assertion on `<app>` | Name or port duplicated or reserved, or bad `repo` URL |
+| `make deploy`: assertion on `<app>` | Name or port duplicated or reserved, or bad `repo` URL |
 | Job scan: no branches / 401 | GitHub token cannot read the repository: prerequisite 0 |
 | Lint or Test fails | Run step 4 commands locally; nothing is deployed |
-| Deploy: HTTP 401 | `vault_jenkins_portainer_token` (installation guide 4.1), `make ci-cd` |
-| Deploy: "not in the MagicBox apps registry" | Run `make apps` |
+| Push: "credentials not found" for `registry` | `vault_registry_password` set, `make deploy` (installation guide 4.5) |
+| Deploy: HTTP 401 | `vault_jenkins_portainer_token` (installation guide 4.1), `make deploy` |
+| Deploy: "not in the MagicBox apps registry" | Run `make deploy` |
 | Verify fails | `HEALTHCHECK` in `Dockerfile`; `sudo docker logs <app>` on MagicBox |
-| `/<app>` returns 404 | `make apps` not run since the app was added |
+| `/<app>` returns 404 | `make deploy` not run since the app was added |
 | `/<app>` returns 502 | Not deployed yet: check the Jenkins build |

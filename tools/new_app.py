@@ -13,7 +13,7 @@ Steps:
   3. with --create-repo, create the private GitHub repository and push
      (`gh repo create`, needs an authenticated GitHub CLI).
 
-Then run `make apps`: Kong route https://magicbox.local/<name> and Jenkins
+Then run `make deploy`: Kong route https://magicbox.local/<name> and Jenkins
 job <name>, whose first scan builds and deploys `main` (ADR-0017).
 """
 
@@ -39,7 +39,7 @@ BUILT_IN = {"portainer", "jenkins", "grafana", "rabbitmq", "ollama", "rustfs", "
 FIRST_PORT, LAST_PORT = 18001, 18999
 REGISTRY_HEADER = """---
 # MagicBox apps registry (git-ignored; template: inventory/apps.example.yml).
-# Maintained by `uv run tools/new_app.py`; applied by `make apps`.
+# Maintained by `uv run tools/new_app.py`; applied by `make deploy`.
 magicbox_apps:
 """
 
@@ -162,7 +162,7 @@ def main() -> None:
 Next steps:
   {"" if args.create_repo else f"- create the private GitHub repository {repo}, then: git -C {dest} push -u origin main"}
   - the GitHub token of Jenkins (credential `github`) must be able to read it
-  - make apps    # Kong route https://magicbox.local/{name} + Jenkins job {name} (first build starts)""")
+  - make deploy    # Kong route https://magicbox.local/{name} + Jenkins job {name} (first build starts)""")
 
 
 if __name__ == "__main__":

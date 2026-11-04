@@ -1,5 +1,5 @@
 ---
-# Read-only report for playbooks/apps.yml: which registered apps are deployed.
+# Read-only report of `make deploy`: which registered apps are deployed.
 # An app without a container is not an error: its Jenkins pipeline deploys it.
 - name: Read the app containers
   community.docker.docker_container_info:

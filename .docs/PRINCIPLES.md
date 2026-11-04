@@ -56,7 +56,8 @@
   documentation consistency).
 - Role changes: `make test-container` (converge + idempotency in a systemd
   container, ADR-0009).
-- On MagicBox: `make deploy`, then `make idempotency` and `make verify`. Roles
+- On MagicBox: `make deploy`, then a second `make deploy` (`changed=0`, or
+  `tools/idempotency_check.py`) and `make deploy EXTRA="--tags verify"`. Roles
   contain `verify`-tagged assertions that check behaviour (name resolution,
   listeners, HTTPS with CA validation), not just task success.
 - Report results honestly: distinguish "verified on MagicBox", "verified in

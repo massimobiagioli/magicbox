@@ -10,7 +10,7 @@ Run by the Jenkinsfile inside the CI image, on the MagicBox host network:
 The Jenkins agent cannot reach Portainer itself: ufw admits port 9443 only from
 the LAN, not from Docker networks. A container on the host network reaches it on
 the loopback interface, and the MagicBox CA validates its certificate. The host
-port of the app comes from the MagicBox apps registry (apps.json, `make apps`).
+port of the app comes from the MagicBox apps registry (apps.json, `make deploy`).
 
 Environment:
     PORTAINER_TOKEN     API token (Jenkins credential "portainer-api-token"), required
@@ -48,11 +48,11 @@ def app_port(registry_file: str, app_name: str) -> int:
     try:
         registry = json.loads(Path(registry_file).read_text(encoding="utf-8"))
     except FileNotFoundError:
-        sys.exit(f"{registry_file} not found: run `make apps` in the magicbox repository")
+        sys.exit(f"{registry_file} not found: run `make deploy` in the magicbox repository")
     if app_name not in registry:
         sys.exit(
             f"App '{app_name}' is not in the MagicBox apps registry: add it to "
-            "inventory/group_vars/magicbox/apps.yml and run `make apps`"
+            "inventory/group_vars/magicbox/apps.yml and run `make deploy`"
         )
     return int(registry[app_name])
 
@@ -71,7 +71,7 @@ class Portainer:
             headers={"X-API-Key": self.token, "Content-Type": "application/json"},
         )
         try:
-            # Image is already built on MagicBox, but the stack update can take a while.
+            # The update pulls the image from the MagicBox registry (same host).
             with urllib.request.urlopen(request, context=self.context, timeout=300) as response:
                 return json.load(response)
         except urllib.error.HTTPError as error:
@@ -111,7 +111,7 @@ def main() -> None:
         portainer.call(
             "PUT",
             f"/api/stacks/{stacks[0]['Id']}?endpointId={endpoint_id}",
-            {"stackFileContent": compose, "env": stack_env, "prune": True, "pullImage": False},
+            {"stackFileContent": compose, "env": stack_env, "prune": True, "pullImage": True},
         )
         action = "Updated"
     else:

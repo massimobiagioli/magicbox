@@ -41,9 +41,10 @@ Pinned in `requirements.yml`, installed into `.ansible/collections`.
 | Docker Engine (docker-ce, cli, containerd.io, buildx, compose plugins) | 29.x (apt-pinned major) | download.docker.com, key fingerprint verified | Official, current engine (ADR-0002) |
 | Portainer CE | 2.45.3 (LTS) | `portainer/portainer-ce:2.45.3` | Web UI for Docker management; LTS channel for stability |
 
-## Default stacks (playbooks/stacks.yml)
+## Default stacks
 
-Deployed as Portainer stacks in the `homelab` environment (ADR-0010, ADR-0011).
+Deployed as Portainer stacks in the `homelab` environment by `make deploy`
+(`playbooks/site.yml`, ADR-0010, ADR-0011, ADR-0021), like every stack below.
 Image tags were checked on Docker Hub on 2026-10-28.
 
 | Stack | Image | Port (LAN) | Rationale |
@@ -56,7 +57,7 @@ Image tags were checked on Docker Hub on 2026-10-28.
 | observability | `grafana/loki:3.7.9` | internal only | Log store (filesystem, TSDB v13) |
 | observability | `grafana/alloy:v1.21.2` | internal only | Log collector; replaces Promtail, EOL 2026-03-02 (ADR-0013) |
 
-## CI/CD stack (playbooks/ci-cd.yml)
+## CI/CD stack
 
 Deployed as the Portainer stack `jenkins` (ADR-0014). Images are built on
 MagicBox from pinned bases (checked 2026-10-29).
@@ -66,7 +67,7 @@ MagicBox from pinned bases (checked 2026-10-29).
 | Jenkins controller | `jenkins/jenkins:2.580.2-lts-jdk21` + pinned plugins | 8443 (HTTPS, MagicBox CA, `/jenkins/`) | Mature CI server that polls GitHub (no inbound webhooks) |
 | Jenkins agent | `jenkins/ssh-agent:9.3.1-jdk21` + `docker:29.9.2-cli` + uv 0.13.6 | internal only | Runs builds; uses the host Docker engine |
 
-## API gateway stack (playbooks/api-gateway.yml)
+## API gateway stack
 
 Deployed as the Portainer stack `kong` (ADR-0015). Image tag checked on
 Docker Hub on 2026-10-29.
@@ -75,7 +76,7 @@ Docker Hub on 2026-10-29.
 |-----------|-------|------------|-----------|
 | Kong Gateway OSS (DB-less) | `kong:3.9.4` | 80 (redirect), 443 (HTTPS, MagicBox CA), host networking | Single entry point `https://magicbox.local/<service>/`; API key for Ollama |
 
-## Object storage stack (playbooks/storage.yml)
+## Object storage stack
 
 Deployed as the Portainer stack `rustfs` (ADR-0018). Version checked on
 GitHub releases on 2026-10-30.
@@ -84,14 +85,24 @@ GitHub releases on 2026-10-30.
 |-----------|-------|------------|-----------|
 | RustFS | `rustfs/rustfs:1.0.4` | 9100 (S3 API, HTTPS), 9101 (console, HTTPS, `/rustfs/console/`) | S3-compatible buckets with a web console; Apache-2.0, single container, low RAM (MinIO excluded) |
 
+## Docker registry stack
+
+Deployed as the Portainer stack `registry` (ADR-0020). Tags checked on
+Docker Hub on 2026-11-04.
+
+| Component | Image | Port (LAN) | Rationale |
+|-----------|-------|------------|-----------|
+| Docker registry (CNCF Distribution) | `registry:3.1.2` | 5000 (HTTPS, MagicBox CA, htpasswd login) | Private images on the LAN for the apps; single container |
+| htpasswd (helper, not a service) | `httpd:2.4.69-alpine` | none (`--network none`, removed after use) | bcrypt hash and check of the registry password |
+
 ## Apps (inventory/group_vars/magicbox/apps.yml, git-ignored)
 
-Deployed by their own Jenkins pipelines (jobs created by `make apps` with
+Deployed by their own Jenkins pipelines (jobs created by `make deploy` with
 Job DSL) as Portainer stacks; routed by Kong (ADR-0016, ADR-0017).
 
 | App | Image | Port | URL |
 |-----|-------|------|-----|
-| tester-app | `magicbox/tester-app:<commit>` (built on MagicBox, `python:3.15.2-slim-trixie`) | `127.0.0.1:18001` -> 3000 (port from the registry) | `https://magicbox.local/tester-app` |
+| tester-app | `magicbox.local:5000/tester-app:<commit>` (built on MagicBox, pushed to the registry, `python:3.15.2-slim-trixie`) | `127.0.0.1:18001` -> 3000 (port from the registry) | `https://magicbox.local/tester-app` |
 
 ## Runtime layout on MagicBox
 
@@ -107,12 +118,14 @@ Job DSL) as Portainer stacks; routed by Kong (ADR-0016, ADR-0017).
 | `/etc/ufw/after.rules` (MAGICBOX DOCKER-USER block) | Limits Docker-published ports to the LAN (ADR-0012) |
 | `/opt/magicbox/stacks/observability/` | Loki and Alloy configs, Grafana data source, Grafana TLS copy |
 | `/opt/magicbox/stacks/rabbitmq/magicbox.conf` | RabbitMQ management path prefix |
-| `/opt/magicbox/apps/apps.json` | App name -> host port, written by `make apps`, read by the app pipelines |
-| `/opt/magicbox/stacks/jenkins/casc/apps.yaml` | Job DSL definitions of the app jobs (JCasC), written by `make apps` |
+| `/opt/magicbox/apps/apps.json` | App name -> host port, written by `make deploy`, read by the app pipelines |
+| `/opt/magicbox/stacks/jenkins/casc/apps.yaml` | Job DSL definitions of the app jobs (JCasC), written by `make deploy` |
 | `/opt/magicbox/stacks/kong/` | Kong declarative config (with the API key, root 0400), TLS copy |
 | `/opt/magicbox/stacks/rustfs/tls/` | RustFS TLS copy (UID 10001, 0400) |
+| `/opt/magicbox/stacks/registry/` | Registry TLS copy, `auth/htpasswd` (bcrypt, root 0400) |
+| `/etc/docker/certs.d/magicbox.local:5000/ca.crt` | MagicBox CA trusted by the local Docker engine for the registry |
 | `/opt/magicbox/stacks/ollama/tls/` | Open WebUI TLS copy (root 0400) |
-| Volumes `rabbitmq_data`, `postgresql_data`, `ollama_data`, `open_webui_data`, `loki_data`, `alloy_data`, `grafana_data`, `rustfs_data` | Stack data (persistent) |
+| Volumes `rabbitmq_data`, `postgresql_data`, `ollama_data`, `open_webui_data`, `loki_data`, `alloy_data`, `grafana_data`, `rustfs_data`, `registry_data`, `jenkins_home` | Stack data (persistent) |
 
 ## Network
 
@@ -128,6 +141,7 @@ Job DSL) as Portainer stacks; routed by Kong (ADR-0016, ADR-0017).
 | 11434 | TCP | Ollama API | `magicbox_lan_cidr` (DOCKER-USER) |
 | 8444 | TCP | Open WebUI (HTTPS) | `magicbox_lan_cidr` (DOCKER-USER) |
 | 9100, 9101 | TCP | RustFS S3 API, console (HTTPS) | `magicbox_lan_cidr` (DOCKER-USER) |
+| 5000 | TCP | Docker registry (HTTPS) | `magicbox_lan_cidr` (DOCKER-USER) |
 | 9000 | TCP | Portainer HTTP | disabled (`--http-disabled`) |
 | 8000 | TCP | Portainer Edge tunnel | blocked (unused) |
 | 2375/2376 | TCP | Docker API | never enabled |

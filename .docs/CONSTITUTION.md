@@ -18,8 +18,10 @@ In scope:
 - Portainer CE with persistent storage, HTTPS and a bootstrap admin
   (`portainer` role), initialised with the `homelab` site environment
   (`portainer_init` role).
-- Default Portainer stacks: RabbitMQ, PostgreSQL, Ollama, and Grafana + Loki +
-  Alloy (`stacks` role, `playbooks/stacks.yml`).
+- Portainer stacks: RabbitMQ, PostgreSQL, Ollama + Open WebUI, Grafana +
+  Loki + Alloy, and, by their ADRs, Jenkins, Kong, RustFS and a Docker
+  registry (`stacks` role). Everything is installed by one idempotent
+  `make deploy` (`playbooks/site.yml`, ADR-0021).
 - Controller tooling (uv, `.venv`, Ansible), project tools, tests,
   documentation, ADRs and PDF manuals.
 
@@ -92,9 +94,9 @@ The infrastructure is accepted when all of the following hold:
 | 1 | `make check` passes (syntax, yamllint, ansible-lint production profile, secret check, manual build, documentation checks) | Controller |
 | 2 | `make test-container` passes: full converge and second run with `changed=0` | Controller with Docker |
 | 3 | `make deploy` completes on MagicBox and its `verify` tasks pass (self-resolution of `magicbox.local`, no `dockerd` TCP listener, Portainer status over HTTPS with CA validation, version match) | MagicBox |
-| 4 | `make idempotency` against MagicBox reports `changed=0` on the second run | MagicBox |
+| 4 | A second `make deploy` (or `tools/idempotency_check.py`) against MagicBox reports `changed=0` on the second run | MagicBox |
 | 5 | From another LAN computer with the CA trusted, `https://magicbox.local:9443/` loads without a certificate warning and the admin can log in | LAN client |
 | 6 | After `sudo reboot`, criterion 5 holds again without manual action and Portainer settings are preserved | LAN client |
 | 7 | From outside `magicbox_lan_cidr`, ports 22 and 9443 are unreachable; port 9000 is closed everywhere | Network test |
-| 8 | `make stacks` completes, a second run reports `changed=0`, and its `verify` tasks pass (containers healthy, PostgreSQL ready, RabbitMQ and Ollama APIs, Grafana over HTTPS, Loki receives logs) | MagicBox |
-| 9 | Portainer shows the `homelab` environment with the stacks `rabbitmq`, `postgresql`, `ollama`, `observability` | LAN client |
+| 8 | The stacks of `make deploy` pass their `verify` tasks (containers healthy, PostgreSQL ready, RabbitMQ and Ollama APIs, Grafana over HTTPS, Loki receives logs, registry login) and a second run reports `changed=0` | MagicBox |
+| 9 | Portainer shows the `homelab` environment with the stacks `rabbitmq`, `postgresql`, `ollama`, `observability`, `rustfs`, `registry`, `jenkins`, `kong` | LAN client |
